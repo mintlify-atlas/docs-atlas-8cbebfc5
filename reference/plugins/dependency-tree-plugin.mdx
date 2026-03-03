@@ -1,0 +1,284 @@
+---
+title: DependencyTreePlugin
+description: Visualize and analyze project dependencies
+---
+
+The `DependencyTreePlugin` provides tasks to visualize, analyze, and export your project's dependency graph. This is extremely useful for understanding transitive dependencies, debugging dependency conflicts, and analyzing license information.
+
+## Activation
+
+This plugin is **automatically enabled** on all projects:
+
+```scala
+object DependencyTreePlugin extends AutoPlugin {
+  override def trigger: PluginTrigger = AllRequirements
+}
+```
+
+## Key Tasks
+
+### dependencyTree
+
+<ParamField path="dependencyTree" type="InputKey[String]">
+  Displays project dependencies in various formats (ASCII tree, JSON, GraphML, etc.).
+  
+  ```bash
+  # ASCII tree format (default)
+  sbt dependencyTree
+  
+  # JSON format
+  sbt "dependencyTree --json"
+  
+  # GraphML format for visualization tools
+  sbt "dependencyTree --graphml"
+  
+  # DOT format for Graphviz
+  sbt "dependencyTree --dot"
+  ```
+</ParamField>
+
+### whatDependsOn
+
+<ParamField path="whatDependsOn" type="InputKey[String]">
+  Shows what dependencies depend on a specific module.
+  
+  ```bash
+  sbt "whatDependsOn org.scala-lang scala-library"
+  ```
+</ParamField>
+
+### dependencyLicenseInfo
+
+<ParamField path="dependencyLicenseInfo" type="InputKey[String]">
+  Displays license information for all dependencies in text or JSON format.
+  
+  ```bash
+  # Text format
+  sbt dependencyLicenseInfo
+  
+  # JSON format
+  sbt "dependencyLicenseInfo --json"
+  ```
+</ParamField>
+
+## Key Settings
+
+### dependencyTreeIncludeScalaLibrary
+
+<ParamField path="dependencyTreeIncludeScalaLibrary" type="SettingKey[Boolean]">
+  Include Scala standard library in dependency tree output. Default: `false`
+  
+  ```scala
+  dependencyTreeIncludeScalaLibrary := true
+  ```
+</ParamField>
+
+### dependencyDotNodeColors
+
+<ParamField path="dependencyDotNodeColors" type="SettingKey[Boolean]">
+  Enable colored nodes in DOT format output. Default: `true`
+  
+  ```scala
+  dependencyDotNodeColors := true
+  ```
+</ParamField>
+
+### dependencyDotHeader
+
+<ParamField path="dependencyDotHeader" type="SettingKey[String]">
+  Custom header for DOT file output (e.g., to set preferred node shapes).
+  
+  ```scala
+  dependencyDotHeader := """digraph "dependency-graph" {
+    graph[rankdir="LR"; splines=polyline]
+    edge [arrowtail="none"]
+  }"""
+  ```
+</ParamField>
+
+### dependencyDotNodeLabel
+
+<ParamField path="dependencyDotNodeLabel" type="SettingKey[(String, String, String) => String]">
+  Function to format node labels in DOT output. Takes organization, name, and version.
+  
+  ```scala
+  dependencyDotNodeLabel := {
+    (org: String, name: String, version: String) =>
+      s"$org:$name:$version"
+  }
+  ```
+</ParamField>
+
+## Usage Examples
+
+### Basic dependency tree
+
+```bash
+sbt dependencyTree
+```
+
+Output:
+```
+my-project:my-project_2.13:0.1.0-SNAPSHOT
+  +-org.typelevel:cats-core_2.13:2.9.0
+  | +-org.typelevel:cats-kernel_2.13:2.9.0
+  | +-org.typelevel:cats-macros_2.13:2.9.0
+  +-org.scala-lang:scala-library:2.13.12
+```
+
+### Find reverse dependencies
+
+```bash
+sbt "whatDependsOn org.typelevel cats-kernel_2.13"
+```
+
+Shows which dependencies in your project depend on cats-kernel.
+
+### Export as JSON
+
+```bash
+sbt "dependencyTree --json" > dependencies.json
+```
+
+Useful for automated analysis or integration with other tools.
+
+### Generate visualization with Graphviz
+
+```bash
+sbt "dependencyTree --dot" > dependencies.dot
+dot -Tpng dependencies.dot -o dependencies.png
+```
+
+### Scope-specific trees
+
+```bash
+# Compile configuration dependencies
+sbt Compile/dependencyTree
+
+# Test configuration dependencies
+sbt Test/dependencyTree
+
+# Runtime dependencies
+sbt Runtime/dependencyTree
+```
+
+## Output Formats
+
+| Format | Flag | Description |
+|--------|------|-------------|
+| ASCII Tree | (default) | Human-readable tree format |
+| JSON | `--json` | Machine-readable JSON |
+| GraphML | `--graphml` | For yEd and other graph tools |
+| DOT | `--dot` | For Graphviz visualization |
+
+## License Information
+
+Check licenses of all dependencies:
+
+```bash
+sbt dependencyLicenseInfo
+```
+
+Output includes:
+- Module coordinates
+- License name
+- License URL
+- Whether license is OSI-approved
+
+Export to JSON for compliance tools:
+
+```bash
+sbt "dependencyLicenseInfo --json" > licenses.json
+```
+
+## Common Use Cases
+
+### Debug dependency conflicts
+
+```bash
+# See full dependency tree
+sbt dependencyTree
+
+# Find what brings in a specific version
+sbt "whatDependsOn com.typesafe akka-actor_2.13"
+```
+
+### Generate compliance reports
+
+```bash
+# Get license information
+sbt "dependencyLicenseInfo --json" > compliance/licenses.json
+```
+
+### Create architecture documentation
+
+```bash
+# Generate visual dependency graph
+sbt "dependencyTree --dot" > docs/dependencies.dot
+dot -Tsvg docs/dependencies.dot -o docs/dependencies.svg
+```
+
+### Analyze transitive dependencies
+
+```bash
+# See all transitive dependencies
+sbt dependencyTree
+
+# Exclude Scala library for cleaner output
+sbt "set dependencyTreeIncludeScalaLibrary := false" dependencyTree
+```
+
+## Configuration in Compile vs Test
+
+The plugin automatically configures tasks for both `Compile` and `Test` configurations:
+
+```scala
+override lazy val projectSettings: Seq[Def.Setting[?]] =
+  DependencyTreeSettings.coreSettings ++
+    inConfig(Compile)(DependencyTreeSettings.baseSettings) ++
+    inConfig(Test)(DependencyTreeSettings.baseSettings)
+```
+
+<Note>
+Test dependencies typically include additional libraries like test frameworks (ScalaTest, JUnit) that won't appear in the Compile dependency tree.
+</Note>
+
+## Integration with Build Tools
+
+### CI/CD Pipelines
+
+Generate dependency snapshots in CI:
+
+```bash
+# In your CI script
+sbt "dependencyTree --json" > artifacts/dependencies-${BUILD_ID}.json
+sbt "dependencyLicenseInfo --json" > artifacts/licenses-${BUILD_ID}.json
+```
+
+### Dependency Analysis Tools
+
+Export to formats compatible with:
+- **Graphviz** (DOT format) - Visual graphs
+- **yEd** (GraphML format) - Interactive graph editor
+- **Custom tools** (JSON format) - Automated analysis
+
+## Performance
+
+<Tip>
+The dependency tree is computed from the `update` task results and cached. Subsequent runs are fast unless dependencies change.
+</Tip>
+
+## Source Reference
+
+Implemented across multiple files:
+- `DependencyTreePlugin.scala` - Main plugin definition
+- `DependencyTreeKeys.scala` - Key definitions
+- `DependencyTreeSettings.scala` - Settings and task implementations
+
+Location: `main/src/main/scala/sbt/plugins/`
+
+## Related
+
+- [Library Dependencies](/guides/library-dependencies) - Managing dependencies
+- [Configurations](/reference/configurations) - Understanding Compile, Test, Runtime
+- [IvyPlugin](/reference/plugins/ivy-plugin) - Dependency resolution

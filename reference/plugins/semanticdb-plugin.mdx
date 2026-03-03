@@ -1,0 +1,168 @@
+---
+title: SemanticdbPlugin
+description: Automatic SemanticDB generation for IDE support and code analysis
+---
+
+The `SemanticdbPlugin` automatically enables SemanticDB generation for Scala projects. SemanticDB is a data model for semantic information about programs in Scala and other languages, used by tools like Metals (Scala LSP server), Scalafix, and other code analysis tools.
+
+## Activation
+
+This plugin is **automatically enabled** on all projects that have `JvmPlugin` enabled (which is most Scala/Java projects):
+
+```scala
+object SemanticdbPlugin extends AutoPlugin {
+  override def requires = JvmPlugin
+  override def trigger = allRequirements
+}
+```
+
+## Key Settings
+
+### semanticdbEnabled
+
+<ParamField path="semanticdbEnabled" type="SettingKey[Boolean]">
+  Enables or disables SemanticDB generation. Can be controlled via system property.
+  
+  ```scala
+  semanticdbEnabled := true
+  ```
+</ParamField>
+
+### semanticdbVersion
+
+<ParamField path="semanticdbVersion" type="SettingKey[String]">
+  Version of the SemanticDB compiler plugin to use. Default: `"4.14.2"`
+  
+  ```scala
+  semanticdbVersion := "4.14.2"
+  ```
+</ParamField>
+
+### semanticdbIncludeInJar
+
+<ParamField path="semanticdbIncludeInJar" type="SettingKey[Boolean]">
+  Whether to include SemanticDB files in the compiled JAR. Default: `false`
+  
+  ```scala
+  semanticdbIncludeInJar := false
+  ```
+</ParamField>
+
+### semanticdbOptions
+
+<ParamField path="semanticdbOptions" type="SettingKey[List[String]]">
+  Additional compiler options for SemanticDB generation.
+  
+  ```scala
+  semanticdbOptions := List()
+  ```
+</ParamField>
+
+### semanticdbTargetRoot
+
+<ParamField path="semanticdbTargetRoot" type="SettingKey[File]">
+  Target directory for SemanticDB files. Automatically configured based on `semanticdbIncludeInJar`.
+</ParamField>
+
+## How It Works
+
+The plugin automatically:
+
+1. **Adds the SemanticDB compiler plugin** as a dependency (for Scala 2.x)
+2. **Configures compiler options** based on Scala version:
+   - Scala 2.x: `-Yrangepos` and `-P:semanticdb:targetroot:...`
+   - Scala 3.0.0-M1/M2: `-Ysemanticdb`
+   - Scala 3.x: `-Xsemanticdb`
+3. **Manages target directories** for generated SemanticDB files
+4. **Integrates with incremental compilation** to cache SemanticDB generation
+
+## Scala Version Compatibility
+
+The plugin handles different Scala versions automatically:
+
+```scala
+semanticdbOptions += {
+  val sv = scalaVersion.value
+  if (sv.startsWith("0.") || sv.startsWith("3.0.0-M1") || sv.startsWith("3.0.0-M2"))
+    "-Ysemanticdb"
+  else if (sv.startsWith("3.")) "-Xsemanticdb"
+  else "-Yrangepos"
+}
+```
+
+## Configuration Examples
+
+### Enable SemanticDB globally
+
+In your global sbt settings (`~/.sbt/1.0/global.sbt`):
+
+```scala
+Global / semanticdbEnabled := true
+```
+
+### Enable for specific project
+
+In `build.sbt`:
+
+```scala
+ThisBuild / semanticdbEnabled := true
+```
+
+### Include SemanticDB in JAR
+
+If you want to ship SemanticDB files with your library:
+
+```scala
+semanticdbIncludeInJar := true
+```
+
+### Custom SemanticDB version
+
+```scala
+semanticdbVersion := "4.15.0"
+```
+
+## IDE Integration
+
+SemanticDB is automatically used by:
+
+- **Metals**: The Scala language server for VS Code, Vim, Emacs, and other editors
+- **IntelliJ IDEA**: For enhanced code analysis
+- **Scalafix**: For code linting and refactoring
+
+<Note>
+When using Metals or other LSP servers, they will automatically enable `semanticdbEnabled` as needed. You typically don't need to manually configure this setting.
+</Note>
+
+## Troubleshooting
+
+### SemanticDB files not generated
+
+Check that:
+1. `semanticdbEnabled := true` is set
+2. Your Scala version is supported
+3. The compiler plugin is being added (check `show allDependencies`)
+
+### IDE not finding definitions
+
+Ensure:
+1. SemanticDB is enabled for all configurations you're working in (Compile and Test)
+2. You've run `compile` or `Test/compile` after enabling SemanticDB
+3. Your IDE is pointing to the correct SemanticDB output directory
+
+## Performance Considerations
+
+<Tip>
+SemanticDB generation adds minimal overhead to compilation time. The incremental compiler caches SemanticDB output, so subsequent compilations are fast.
+</Tip>
+
+## Source Reference
+
+Implemented in `SemanticdbPlugin.scala`:
+- Location: `main/src/main/scala/sbt/plugins/SemanticdbPlugin.scala`
+- Lines 24-100+
+
+## Related
+
+- [JvmPlugin](/reference/plugins/jvm-plugin) - Required by SemanticdbPlugin
+- [Incremental Compilation](/guides/incremental-compilation) - How SemanticDB integrates with Zinc

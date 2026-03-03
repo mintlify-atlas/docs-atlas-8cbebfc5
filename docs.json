@@ -72,7 +72,9 @@
               "reference/plugins/core-plugin",
               "reference/plugins/jvm-plugin",
               "reference/plugins/ivy-plugin",
-              "reference/plugins/sbt-plugin"
+              "reference/plugins/sbt-plugin",
+              "reference/plugins/semanticdb-plugin",
+              "reference/plugins/dependency-tree-plugin"
             ]
           },
           {
