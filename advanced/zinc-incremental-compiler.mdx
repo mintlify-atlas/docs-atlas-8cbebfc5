@@ -1,0 +1,326 @@
+---
+title: "Zinc Incremental Compiler"
+description: "Understanding Zinc, sbt's incremental Scala compiler that powers fast rebuilds"
+---
+
+Zinc is sbt's incremental compiler for Scala, hosted in a separate repository at [sbt/zinc](https://github.com/sbt/zinc). It's the engine that enables sbt to recompile only the files that need recompilation, making builds dramatically faster.
+
+## What is Zinc?
+
+Zinc wraps the Scala compiler and tracks dependencies between source files, classes, and external libraries. By analyzing what changed, Zinc can determine the minimal set of files that need recompilation.
+
+<Note>
+  **Key Innovation**: Zinc doesn't just track file modification times—it performs deep dependency analysis at the API level. A change to a method's implementation won't trigger recompilation of callers if the method's signature didn't change.
+</Note>
+
+## How Incremental Compilation Works
+
+<Steps>
+  <Step title="Initial Compilation">
+    On the first compile, Zinc:
+    
+    1. Compiles all source files
+    2. Records dependencies between sources and class files
+    3. Extracts API signatures from compiled classes
+    4. Stores this information in an **Analysis** file
+  </Step>
+
+  <Step title="Change Detection">
+    On subsequent compiles, Zinc:
+    
+    1. Detects which source files changed (by hash, not timestamp)
+    2. Identifies which APIs were modified
+    3. Determines which files depend on the modified APIs
+  </Step>
+
+  <Step title="Minimal Recompilation">
+    Zinc recompiles:
+    
+    1. Files that changed
+    2. Files that depend on modified APIs
+    3. Transitively affected files (if needed)
+    
+    Files with unchanged dependencies are **not** recompiled.
+  </Step>
+
+  <Step title="Analysis Update">
+    After successful compilation:
+    
+    1. Updates the Analysis with new dependencies
+    2. Stores new API signatures
+    3. Ready for the next incremental compile
+  </Step>
+</Steps>
+
+## The Analysis File
+
+The Analysis file (typically stored in `target/streams/*/compile/_global/streams/inc_compile_*.zip`) contains:
+
+- **Source dependencies** - Which sources depend on which sources
+- **Binary dependencies** - Which sources depend on which class files
+- **External dependencies** - Which sources depend on which library classes
+- **API signatures** - Extracted API information for dependency tracking
+- **Compilation products** - Mapping of sources to generated class files
+
+<Warning>
+  The Analysis file is critical for incremental compilation. If it's deleted or corrupted, Zinc must perform a full recompilation. Use `clean` to intentionally remove it.
+</Warning>
+
+## Zinc Integration in sbt
+
+### ZincComponentCompiler
+
+The `zinc-lm-integration` module bridges Zinc with sbt's library management system.
+
+Key file: `zinc-lm-integration/src/main/scala/sbt/internal/inc/ZincComponentCompiler.scala:1`
+
+```scala
+private[sbt] object ZincComponentCompiler {
+  final val binSeparator = "-bin_"
+  final val javaClassVersion = System.getProperty("java.class.version")
+  
+  // Compiles compiler bridges for different Scala versions
+  // Manages component caching
+}
+```
+
+This component:
+- Compiles compiler bridges for each Scala version
+- Manages component caching to avoid recompilation
+- Resolves Scala compiler artifacts through library management
+
+### ZincComponentManager
+
+Manages the lifecycle of Zinc components:
+
+Key file: `zinc-lm-integration/src/main/scala/sbt/internal/inc/ZincComponentManager.scala:1`
+
+- Handles component locking for concurrent builds
+- Provides component storage and retrieval
+- Manages component versioning
+
+### Compiler Bridge
+
+Zinc uses a **compiler bridge** to communicate with different Scala compiler versions:
+
+- Each Scala version requires its own bridge
+- Bridges are compiled on-demand and cached
+- The bridge implements the `xsbti.compile` interface
+
+## Name Hashing
+
+Zinc uses a technique called **name hashing** to improve incremental compilation:
+
+- Tracks dependencies at the member level (methods, fields, types)
+- Changes to private implementation don't trigger recompilation of clients
+- Only API changes propagate to dependent files
+
+This makes incremental compilation much more precise than file-level dependency tracking.
+
+## Compilation Phases
+
+### 1. Analysis Phase
+
+```
+Detect changes → Load analysis → Determine invalidated sources
+```
+
+### 2. Compilation Phase
+
+```
+Compile invalidated sources → Extract new APIs → Detect new dependencies
+```
+
+### 3. Persistence Phase
+
+```
+Update analysis → Save to disk → Cache for next compile
+```
+
+## Key Concepts
+
+<AccordionGroup>
+  <Accordion title="API Extraction" icon="magnifying-glass">
+    Zinc extracts API information from compiled classes:
+    
+    - Public method signatures
+    - Class hierarchies
+    - Type definitions
+    - Macro definitions
+    
+    This enables precise dependency tracking at the API level rather than file level.
+  </Accordion>
+
+  <Accordion title="Invalidation" icon="arrows-rotate">
+    Zinc invalidates sources in several scenarios:
+    
+    - **Direct invalidation**: Source file was modified
+    - **API invalidation**: A dependency's API changed
+    - **Transitive invalidation**: Propagated from invalidated dependencies
+    
+    The invalidation algorithm ensures correctness while minimizing recompilation.
+  </Accordion>
+
+  <Accordion title="External Dependencies" icon="box">
+    Zinc tracks dependencies on external libraries:
+    
+    - Records which sources use which library classes
+    - Triggers recompilation when library versions change
+    - Handles binary compatibility concerns
+  </Accordion>
+
+  <Accordion title="Macro Dependencies" icon="wand-magic-sparkles">
+    Scala macros require special handling:
+    
+    - Macro implementations must be compiled before macro use sites
+    - Macro changes often require full recompilation of dependents
+    - Zinc tracks macro expansion dependencies
+  </Accordion>
+</AccordionGroup>
+
+## Configuration Options
+
+Zinc behavior can be configured through sbt settings:
+
+```scala
+// Limit parallel compilation
+ThisBuild / incOptions := {
+  incOptions.value
+    .withRecompileOnMacroDef(Some(false))
+    .withApiDebug(false)
+}
+
+// Control class file manager
+ThisBuild / classLoaderLayeringStrategy := 
+  ClassLoaderLayeringStrategy.Flat
+```
+
+Common settings:
+
+- `incOptions` - Fine-tune incremental compilation behavior
+- `compileOrder` - Control Java/Scala compilation order
+- `classLoaderLayeringStrategy` - Manage classloader isolation
+
+## Performance Characteristics
+
+<CardGroup cols={2}>
+  <Card title="First Compilation" icon="gauge-high">
+    Slower than regular scalac due to analysis overhead
+    
+    **Cost**: +10-20% compilation time
+  </Card>
+  
+  <Card title="Incremental Builds" icon="gauge-low">
+    Dramatically faster for small changes
+    
+    **Speedup**: 10-100x depending on change size
+  </Card>
+  
+  <Card title="Full Rebuild" icon="gauge-high">
+    Similar to initial compilation
+    
+    **Use**: After `clean` or analysis corruption
+  </Card>
+  
+  <Card title="Warm Compiler" icon="fire">
+    Resident compiler reduces JVM warmup
+    
+    **Speedup**: 2-5x for repeated compilations
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+### Compilation Inconsistencies
+
+If you see unexpected compilation errors or missing dependencies:
+
+<Steps>
+  <Step title="Run clean">
+    ```bash
+    sbt clean
+    ```
+    This removes the Analysis file and forces a full recompilation.
+  </Step>
+  
+  <Step title="Check for corrupted analysis">
+    Look for error messages mentioning "analysis" or "incremental compilation."
+  </Step>
+  
+  <Step title="Verify Scala version consistency">
+    Ensure all projects use compatible Scala versions.
+  </Step>
+</Steps>
+
+### Over-compilation
+
+If Zinc is recompiling more than expected:
+
+1. **Enable debug logging**:
+   ```bash
+   sbt 'set incOptions := incOptions.value.withApiDebug(true)' compile
+   ```
+
+2. **Check for macro definitions**: Macros often trigger broader recompilation
+
+3. **Review API stability**: Frequent API changes propagate to dependents
+
+### Under-compilation
+
+If changes aren't being picked up:
+
+1. Verify source files are in the correct directory
+2. Check that timestamps are updating (some editors don't)
+3. Run `clean` to reset compilation state
+
+<Note>
+  **Tip**: Use `sbt ~compile` for continuous compilation during development. The `~` prefix watches for file changes and automatically recompiles.
+</Note>
+
+## Zinc Architecture
+
+Zinc is separate from sbt and can be used standalone:
+
+- **xsbti** - Binary interface between Zinc and compilers
+- **zinc-core** - Core incremental compilation logic
+- **zinc-persist** - Analysis serialization
+- **zinc-compile** - High-level compilation APIs
+- **zinc-scripted** - Testing framework for Zinc
+
+## Advanced Topics
+
+### Custom Compiler Plugins
+
+Zinc supports compiler plugins but requires special consideration:
+
+- Plugins that modify APIs may affect incremental compilation
+- Some plugins require full recompilation
+- Configure with `scalacOptions`
+
+### Zinc Server
+
+sbt 2.x can run Zinc as a server for build tool integration:
+
+- Shared compilation across multiple clients
+- Supports Build Server Protocol (BSP)
+- See [Build Server Protocol](/advanced/build-server-protocol)
+
+## Further Reading
+
+<CardGroup cols={2}>
+  <Card title="Zinc Repository" icon="github" href="https://github.com/sbt/zinc">
+    Source code and detailed documentation
+  </Card>
+  
+  <Card title="Architecture" icon="sitemap" href="/advanced/architecture">
+    How Zinc fits into sbt's architecture
+  </Card>
+  
+  <Card title="Compilation" icon="book" href="/docs/offline/Compilation">
+    User guide for compilation in sbt
+  </Card>
+  
+  <Card title="Performance" icon="chart-line" href="https://github.com/sbt/sbt/blob/develop/PROFILING.md">
+    Profiling and optimizing builds
+  </Card>
+</CardGroup>

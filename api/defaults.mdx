@@ -1,0 +1,453 @@
+---
+title: "Defaults API"
+description: "Default implementations and build settings provided by sbt"
+---
+
+# Defaults API
+
+The `Defaults` object (defined in `sbt.Defaults`) provides default implementations for common build settings and tasks. It extends `BuildCommon` and contains the core configuration that makes sbt work out of the box.
+
+## Core Build Settings
+
+### buildCore
+
+```scala
+lazy val buildCore: Seq[Setting[?]]
+```
+
+Core settings required for every sbt build.
+
+<ResponseField name="buildCore" type="Seq[Setting[?]]">
+  Combines `thisBuildCore` and `globalCore` to provide essential build infrastructure.
+</ResponseField>
+
+**Components:**
+- Build-level settings (`thisBuildCore`)
+- Global settings (`globalCore`)
+
+**Location:** `Defaults.scala:144`
+
+### globalCore
+
+```scala
+lazy val globalCore: Seq[Setting[?]]
+```
+
+Global default settings applied to all projects.
+
+<ResponseField name="globalCore" type="Seq[Setting[?]]">
+  Includes file filters, test tasks, Ivy configuration, JVM settings, watch settings, and sbt core functionality.
+</ResponseField>
+
+**Includes:**
+- Default file filters (`excludeFilter`, `includeFilter`)
+- Test task defaults
+- File input/output configuration
+- Watch service settings
+- Global Ivy and JVM settings
+
+**Location:** `Defaults.scala:151`
+
+## JVM Configuration
+
+### globalJvmCore
+
+```scala
+lazy val globalJvmCore: Seq[Setting[?]]
+```
+
+JVM-specific global settings.
+
+<ResponseField name="globalJvmCore" type="Seq[Setting[?]]">
+  Configures Scala instances, compiler cache, classpath options, and JVM-related defaults.
+</ResponseField>
+
+**Key Settings:**
+- `compilerCache` - Compiler instance cache
+- `sourcesInBase` - Include sources from base directory
+- `autoScalaLibrary` - Automatically add scala-library dependency
+- `managedScalaInstance` - Use managed Scala instance
+- `autoCompilerPlugins` - Automatically detect compiler plugins
+- `scalaHome` - Local Scala installation (default: None)
+- `javaHome` - Java installation for compilation/forking
+- `javaOptions` - JVM options for forked processes
+- `sbtPlugin` - Enable sbt plugin mode
+- `crossPaths` - Enable cross-version paths
+
+**Location:** `Defaults.scala:172`
+
+## Dependency Management
+
+### globalIvyCore
+
+```scala
+lazy val globalIvyCore: Seq[Setting[?]]
+```
+
+Ivy and dependency resolution settings.
+
+<ResponseField name="globalIvyCore" type="Seq[Setting[?]]">
+  Configures dependency resolution, repositories, versioning, and publishing defaults.
+</ResponseField>
+
+**Key Settings:**
+- `internalConfigurationMap` - Configuration mapping
+- `credentials` - Publishing credentials
+- `exportJars` - Export JARs instead of classes
+- `scalaOrganization` - Scala artifact organization
+- `sbtResolver` - Resolver for sbt artifacts
+- `version` - Project version (default: "0.1.0-SNAPSHOT")
+- `checksums` - Checksum algorithms
+- `conflictManager` - Dependency conflict resolution
+- `csrCacheDirectory` - Coursier cache location
+- `csrReconciliations` - Version reconciliation strategies
+
+**Location:** `Defaults.scala:249`
+
+## Path Configurations
+
+### paths
+
+```scala
+def paths: Seq[Setting[?]]
+```
+
+Default directory structure settings.
+
+<ResponseField name="paths" type="Seq[Setting[?]]">
+  Defines standard project directories: base, target, sources, and resources.
+</ResponseField>
+
+**Configured Paths:**
+- `baseDirectory` - Project root directory
+- `target` - Build output directory
+- `sourceDirectory` - Source root (`src`)
+- `sourceManaged` - Generated sources
+- `resourceManaged` - Generated resources
+
+**Location:** `Defaults.scala:549`
+
+### configPaths
+
+```scala
+lazy val configPaths: Seq[Setting[?]]
+```
+
+Configuration-specific path settings.
+
+<ResponseField name="configPaths" type="Seq[Setting[?]]">
+  Combines source, resource, and output paths for configurations like Compile and Test.
+</ResponseField>
+
+**Components:**
+- `sourceConfigPaths` - Source directories
+- `resourceConfigPaths` - Resource directories  
+- `outputConfigPaths` - Output directories
+
+**Location:** `Defaults.scala:567`
+
+### sourceConfigPaths
+
+```scala
+lazy val sourceConfigPaths: Seq[Setting[?]]
+```
+
+Source directory configuration.
+
+<ResponseField name="sourceConfigPaths" type="Seq[Setting[?]]">
+  Defines managed and unmanaged source directories with cross-version support.
+</ResponseField>
+
+**Key Settings:**
+- `sourceDirectory` - `src/main` or `src/test`
+- `scalaSource` - Scala source directory
+- `javaSource` - Java source directory
+- `unmanagedSourceDirectories` - Manual source directories
+- `managedSourceDirectories` - Generated source directories
+- `sourceGenerators` - Tasks that generate sources
+
+**Location:** `Defaults.scala:568`
+
+## Compilation Settings
+
+### compileBase
+
+```scala
+def compileBase: Seq[Setting[?]]
+```
+
+Core compilation configuration.
+
+<ResponseField name="compileBase" type="Seq[Setting[?]]">
+  Sets up Scala instances, compiler bridges, classpath options, and console configuration.
+</ResponseField>
+
+**Key Components:**
+- Scala instance configuration
+- Compiler bridge setup
+- Cross-version settings
+- Console and REPL configuration
+- Classpath options
+
+**Location:** `Defaults.scala:679`
+
+### configTasks
+
+```scala
+lazy val configTasks: Seq[Setting[?]]
+```
+
+Configuration-level task definitions.
+
+<ResponseField name="configTasks" type="Seq[Setting[?]]">
+  Defines compile, run, test, and documentation tasks for a configuration.
+</ResponseField>
+
+**Key Tasks:**
+- `compile` - Incremental compilation
+- `compileIncremental` - Internal incremental compile
+- `copyResources` - Resource copying
+- `console` - Scala REPL
+- `run` / `runMain` - Application execution
+- `clean` - Artifact cleanup
+- `doc` - API documentation generation
+
+**Location:** `Defaults.scala:940`
+
+### compileAnalysisSettings
+
+```scala
+lazy val compileAnalysisSettings: Seq[Setting[?]]
+```
+
+Zinc incremental compilation analysis configuration.
+
+<ResponseField name="compileAnalysisSettings" type="Seq[Setting[?]]">
+  Configures analysis storage, compiler setup, and incremental compilation.
+</ResponseField>
+
+**Includes:**
+- `compileAnalysisFile` - Analysis storage location
+- `compileIncSetup` - Incremental compiler setup
+- `incOptions` - Incremental compilation options
+
+## Testing Configuration
+
+### testTasks
+
+```scala
+lazy val testTasks: Seq[Setting[?]]
+```
+
+Test execution task definitions.
+
+<ResponseField name="testTasks" type="Seq[Setting[?]]">
+  Configures test discovery, execution, filtering, and reporting.
+</ResponseField>
+
+**Key Tasks:**
+- `test` - Run tests incrementally
+- `testOnly` - Run specific tests
+- `testQuick` - Run failed/affected tests
+- `testFull` - Run all tests
+- `definedTests` - Discovered test classes
+- `loadedTestFrameworks` - Available test frameworks
+- `executeTests` - Test execution engine
+
+**Location:** `Defaults.scala:1165`
+
+### testDefaults
+
+```scala
+private def testDefaults: Seq[Setting[?]]
+```
+
+Global test framework defaults.
+
+<ResponseField name="testDefaults" type="Seq[Setting[?]]">
+  Default test frameworks, listeners, options, and result logging.
+</ResponseField>
+
+**Defaults:**
+- `testFrameworks` - All standard frameworks (ScalaTest, specs2, JUnit, etc.)
+- `testListeners` - Empty by default
+- `testOptions` - Empty by default
+- `testResultLogger` - Default test result logger
+
+**Location:** `Defaults.scala:1152`
+
+## Helper Functions
+
+### makeCrossSources
+
+```scala
+def makeCrossSources(
+    scalaSrcDir: File,
+    javaSrcDir: File,
+    sv: String,
+    epochVersion: String,
+    cross: Boolean
+): Seq[File]
+```
+
+Generates cross-versioned source directories.
+
+<ParamField path="scalaSrcDir" type="File" required>
+  Base Scala source directory
+</ParamField>
+
+<ParamField path="javaSrcDir" type="File" required>
+  Base Java source directory
+</ParamField>
+
+<ParamField path="sv" type="String" required>
+  Scala version (e.g., "2.13", "3")
+</ParamField>
+
+<ParamField path="epochVersion" type="String" required>
+  Epoch version (e.g., "2" for Scala 2, "3" for Scala 3)
+</ParamField>
+
+<ParamField path="cross" type="Boolean" required>
+  Enable cross-version source directories
+</ParamField>
+
+<ResponseField name="result" type="Seq[File]">
+  List of source directories including cross-version variants
+</ResponseField>
+
+**Returns:**
+When `cross` is true:
+- Base Scala directory
+- `scala-<sv>` directory (e.g., `scala-2.13`)
+- `scala-<epochVersion>` directory (e.g., `scala-2`)
+- Java directory
+
+**Location:** `Defaults.scala:835`
+
+### makeCrossTarget
+
+```scala
+def makeCrossTarget(
+    t: File,
+    scalaVersion: String,
+    scalaBinaryVersion: String,
+    sbtv: String,
+    plugin: Boolean,
+    cross: Boolean
+): File
+```
+
+Generates cross-versioned target directory.
+
+<ParamField path="t" type="File" required>
+  Base target directory
+</ParamField>
+
+<ParamField path="scalaVersion" type="String" required>
+  Full Scala version
+</ParamField>
+
+<ParamField path="scalaBinaryVersion" type="String" required>
+  Scala binary version
+</ParamField>
+
+<ParamField path="sbtv" type="String" required>
+  sbt version
+</ParamField>
+
+<ParamField path="plugin" type="Boolean" required>
+  Is this an sbt plugin?
+</ParamField>
+
+<ParamField path="cross" type="Boolean" required>
+  Enable cross-building
+</ParamField>
+
+<ResponseField name="result" type="File">
+  Target directory path with version suffixes
+</ResponseField>
+
+**Returns:**
+- For Scala 3: `target/scala-<fullVersion>/`
+- For Scala 2: `target/scala-<binaryVersion>/`
+- For plugins: Additional `sbt-<version>/` suffix
+
+**Location:** `Defaults.scala:876`
+
+### generate
+
+```scala
+def generate(generators: SettingKey[Seq[Task[Seq[File]]]]): Initialize[Task[Seq[File]]]
+```
+
+Runs all generator tasks and collects results.
+
+<ParamField path="generators" type="SettingKey[Seq[Task[Seq[File]]]]" required>
+  Setting key containing generator tasks (e.g., `sourceGenerators`, `resourceGenerators`)
+</ParamField>
+
+<ResponseField name="result" type="Initialize[Task[Seq[File]]]">
+  Flattened list of all generated files
+</ResponseField>
+
+**Location:** `Defaults.scala:1133`
+
+## Project-Level Settings
+
+### projectCore
+
+```scala
+def projectCore: Seq[Setting[?]]
+```
+
+Core project-level settings.
+
+<ResponseField name="projectCore" type="Seq[Setting[?]]">
+  Basic project configuration including name and logging.
+</ResponseField>
+
+**Settings:**
+- `name` - Derived from project ID
+- `logManager` - Logging manager setup
+- `onLoadMessage` - Project load notification
+
+**Location:** `Defaults.scala:539`
+
+### projectTasks
+
+```scala
+lazy val projectTasks: Seq[Setting[?]]
+```
+
+Project-level task definitions.
+
+<ResponseField name="projectTasks" type="Seq[Setting[?]]">
+  Tasks that operate on the entire project.
+</ResponseField>
+
+**Tasks:**
+- `cleanFiles` - Files to delete on clean
+- `clean` - Clean task implementation
+- `transitiveDynamicInputs` - Watch dependency tracking
+
+**Location:** `Defaults.scala:1124`
+
+## Usage Example
+
+```scala
+import sbt._
+import sbt.Keys._
+import Defaults._
+
+lazy val myProject = (project in file("."))
+  .settings(
+    name := "my-project",
+    scalaVersion := "3.3.1",
+    // Defaults.configPaths is automatically applied
+    // Defaults.compileBase is automatically applied
+    // Defaults.testTasks is automatically applied
+  )
+```
+
+Most `Defaults` settings are applied automatically by sbt's plugin system and don't need explicit configuration.

@@ -1,0 +1,650 @@
+---
+title: Command Line Reference
+description: Complete reference for sbt command-line interface, commands, and options
+---
+
+sbt provides both an interactive shell and batch mode execution. This page documents available commands, command-line options, and usage patterns.
+
+## Running sbt
+
+### Interactive Mode
+
+Start the sbt shell for interactive command execution:
+
+```bash
+$ sbt
+sbt:my-project> compile
+sbt:my-project> test
+sbt:my-project> exit
+```
+
+### Batch Mode
+
+Execute commands and exit:
+
+```bash
+$ sbt compile
+$ sbt clean test
+$ sbt "testOnly com.example.MySpec"
+```
+
+<Note>
+  Use quotes around commands with arguments to prevent shell interpretation.
+</Note>
+
+## Common Commands
+
+### Compilation Commands
+
+<ParamField path="compile" type="Command">
+  Compiles main sources in the current project.
+  
+  ```bash
+  sbt compile
+  sbt Test/compile      # Compile test sources
+  sbt myProject/compile # Compile specific project
+  ```
+</ParamField>
+
+<ParamField path="clean" type="Command">
+  Deletes all generated files (target directory).
+  
+  ```bash
+  sbt clean
+  sbt clean compile     # Clean then compile
+  ```
+</ParamField>
+
+<ParamField path="reload" type="Command">
+  Reloads the build definition after changes to `build.sbt` or `project/` files.
+  
+  ```bash
+  sbt:my-project> reload
+  ```
+  
+  <Warning>
+    sbt does not automatically reload after build definition changes. You must run `reload` manually.
+  </Warning>
+</ParamField>
+
+### Running Applications
+
+<ParamField path="run" type="Command">
+  Runs the main class for the current project.
+  
+  ```bash
+  sbt run
+  sbt "run arg1 arg2"           # With arguments
+  sbt "run -Dprop=value arg1"   # With system properties
+  ```
+</ParamField>
+
+<ParamField path="runMain" type="Command">
+  Runs a specific main class.
+  
+  ```bash
+  sbt "runMain com.example.Main"
+  sbt "runMain com.example.Main arg1 arg2"
+  ```
+</ParamField>
+
+### Testing Commands
+
+<ParamField path="test" type="Command">
+  Runs all tests (or incrementally runs tests that failed or changed).
+  
+  ```bash
+  sbt test
+  sbt myProject/test    # Test specific project
+  ```
+</ParamField>
+
+<ParamField path="testOnly" type="Command">
+  Runs specific test classes or suites.
+  
+  ```bash
+  sbt "testOnly com.example.MySpec"
+  sbt "testOnly com.example.*Spec"
+  sbt "testOnly * -- -z \"test name\""
+  ```
+</ParamField>
+
+<ParamField path="testQuick" type="Command">
+  Runs tests that failed in previous runs or whose dependencies changed.
+  
+  ```bash
+  sbt testQuick
+  ```
+</ParamField>
+
+### Interactive Commands
+
+<ParamField path="console" type="Command">
+  Starts the Scala REPL with the project classpath.
+  
+  ```bash
+  sbt console
+  ```
+  
+  Type `:quit` or press Ctrl+D to exit the console.
+</ParamField>
+
+<ParamField path="consoleQuick" type="Command">
+  Starts the Scala REPL with dependencies but without compiling project sources.
+  
+  ```bash
+  sbt consoleQuick
+  ```
+</ParamField>
+
+<ParamField path="consoleProject" type="Command">
+  Starts the Scala REPL with the sbt build definition on the classpath.
+  
+  ```bash
+  sbt consoleProject
+  ```
+  
+  Useful for debugging build definitions.
+</ParamField>
+
+### Package Commands
+
+<ParamField path="package" type="Command">
+  Creates a JAR file containing compiled classes and resources.
+  
+  ```bash
+  sbt package
+  sbt Test/package      # Package test classes
+  ```
+  
+  Output: `target/scala-<version>/<name>_<scalaVersion>-<version>.jar`
+</ParamField>
+
+<ParamField path="packageSrc" type="Command">
+  Creates a JAR file containing source files.
+  
+  ```bash
+  sbt packageSrc
+  ```
+</ParamField>
+
+<ParamField path="packageDoc" type="Command">
+  Creates a JAR file containing API documentation.
+  
+  ```bash
+  sbt packageDoc
+  ```
+</ParamField>
+
+### Documentation Commands
+
+<ParamField path="doc" type="Command">
+  Generates API documentation using Scaladoc.
+  
+  ```bash
+  sbt doc
+  ```
+  
+  Output: `target/scala-<version>/api/`
+</ParamField>
+
+### Dependency Commands
+
+<ParamField path="update" type="Command">
+  Resolves and downloads dependencies.
+  
+  ```bash
+  sbt update
+  ```
+  
+  Usually not needed as it runs automatically when required.
+</ParamField>
+
+<ParamField path="dependencyTree" type="Command">
+  Shows the dependency tree (requires sbt-dependency-graph plugin).
+  
+  ```bash
+  sbt dependencyTree
+  ```
+</ParamField>
+
+<ParamField path="evicted" type="Command">
+  Shows eviction warnings for conflicting dependencies.
+  
+  ```bash
+  sbt evicted
+  ```
+</ParamField>
+
+## Command Prefixes
+
+### Configuration Scoping
+
+Prefix commands with a configuration:
+
+```bash
+sbt Test/compile       # Compile test sources
+sbt Test/run           # Run from Test configuration
+sbt Compile/doc        # Generate docs for main sources
+```
+
+### Project Scoping
+
+For multi-project builds, scope commands to a specific project:
+
+```bash
+sbt core/compile       # Compile 'core' project
+sbt api/test          # Test 'api' project
+sbt cli/run           # Run 'cli' project
+```
+
+### Combined Scoping
+
+Combine project and configuration scopes:
+
+```bash
+sbt core/Test/compile
+sbt api/Compile/packageBin
+```
+
+## Command Composition
+
+### Sequential Execution
+
+Run multiple commands in sequence using semicolons:
+
+```bash
+sbt clean; compile; test
+sbt "clean; test"          # Quote when using in batch mode
+```
+
+### Continuous Execution
+
+Prefix a command with `~` for continuous/triggered execution:
+
+```bash
+sbt ~compile              # Recompile on source changes
+sbt ~test                 # Rerun tests on changes
+sbt "~testQuick"          # Continuous quick testing
+```
+
+Press Enter to stop continuous execution.
+
+### Multiple Projects
+
+Use `all` to run a command on all projects:
+
+```bash
+sbt "all compile"         # Compile all projects
+sbt "all test"            # Test all projects
+```
+
+## sbt Launcher Options
+
+Command-line options for the sbt launcher:
+
+### Memory Options
+
+```bash
+# Set maximum heap size
+sbt -J-Xmx4G compile
+
+# Set initial and maximum heap
+sbt -J-Xms1G -J-Xmx4G test
+
+# Set stack size
+sbt -J-Xss4M compile
+```
+
+<Note>
+  The `-J` prefix passes options directly to the JVM.
+</Note>
+
+### System Properties
+
+```bash
+# Set system property
+sbt -Dproperty=value compile
+
+# Multiple properties
+sbt -Denv=prod -Dconfig=production run
+```
+
+### sbt Options
+
+<ParamField path="-v" type="Flag">
+  Enable verbose output.
+  
+  ```bash
+  sbt -v compile
+  ```
+</ParamField>
+
+<ParamField path="-debug" type="Flag">
+  Enable debug logging.
+  
+  ```bash
+  sbt -debug
+  ```
+</ParamField>
+
+<ParamField path="--help" type="Flag">
+  Display help information.
+  
+  ```bash
+  sbt --help
+  ```
+</ParamField>
+
+<ParamField path="--version" type="Flag">
+  Display sbt version.
+  
+  ```bash
+  sbt --version
+  ```
+</ParamField>
+
+<ParamField path="-no-colors" type="Flag">
+  Disable ANSI color codes in output.
+  
+  ```bash
+  sbt -no-colors test
+  ```
+</ParamField>
+
+<ParamField path="--client" type="Flag">
+  Force client mode (connect to existing server).
+  
+  ```bash
+  sbt --client compile
+  ```
+</ParamField>
+
+<ParamField path="--batch" type="Flag">
+  Force batch mode (no interactive shell).
+  
+  ```bash
+  sbt --batch clean test
+  ```
+</ParamField>
+
+### Configuration Files
+
+<ParamField path="-Dsbt.global.base" type="Property">
+  Override global sbt directory (default: `~/.sbt`).
+  
+  ```bash
+  sbt -Dsbt.global.base=/custom/sbt compile
+  ```
+</ParamField>
+
+<ParamField path="-Dsbt.ivy.home" type="Property">
+  Override Ivy home directory (default: `~/.ivy2`).
+  
+  ```bash
+  sbt -Dsbt.ivy.home=/custom/ivy compile
+  ```
+</ParamField>
+
+## Shell Commands
+
+### Project Navigation
+
+<ParamField path="projects" type="Shell Command">
+  List all projects in the build.
+  
+  ```bash
+  sbt:my-project> projects
+  ```
+</ParamField>
+
+<ParamField path="project" type="Shell Command">
+  Switch to a different project or display the current project.
+  
+  ```bash
+  sbt:root> project api
+  sbt:api> project
+  [info] api
+  ```
+</ParamField>
+
+### Inspecting Settings
+
+<ParamField path="show" type="Shell Command">
+  Display the value of a setting or task result.
+  
+  ```bash
+  sbt:my-project> show scalaVersion
+  [info] 3.3.1
+  
+  sbt:my-project> show Test/definedTestNames
+  ```
+</ParamField>
+
+<ParamField path="inspect" type="Shell Command">
+  Display detailed information about a setting or task.
+  
+  ```bash
+  sbt:my-project> inspect scalaVersion
+  sbt:my-project> inspect compile
+  ```
+</ParamField>
+
+### Session Management
+
+<ParamField path="session save" type="Shell Command">
+  Save temporary settings to `build.sbt`.
+  
+  ```bash
+  sbt:my-project> set scalaVersion := "3.3.1"
+  sbt:my-project> session save
+  ```
+</ParamField>
+
+<ParamField path="session clear" type="Shell Command">
+  Clear all session settings.
+  
+  ```bash
+  sbt:my-project> session clear
+  ```
+</ParamField>
+
+### Setting Values Temporarily
+
+<ParamField path="set" type="Shell Command">
+  Set a value for the current session.
+  
+  ```bash
+  sbt:my-project> set scalaVersion := "2.13.12"
+  sbt:my-project> set Test/fork := true
+  ```
+  
+  Changes are lost when exiting sbt unless saved with `session save`.
+</ParamField>
+
+### Help Commands
+
+<ParamField path="help" type="Shell Command">
+  Display help for commands.
+  
+  ```bash
+  sbt:my-project> help
+  sbt:my-project> help compile
+  sbt:my-project> help run
+  ```
+</ParamField>
+
+<ParamField path="tasks" type="Shell Command">
+  List available tasks.
+  
+  ```bash
+  sbt:my-project> tasks
+  sbt:my-project> tasks -v    # Verbose listing
+  ```
+</ParamField>
+
+<ParamField path="settings" type="Shell Command">
+  List available settings.
+  
+  ```bash
+  sbt:my-project> settings
+  sbt:my-project> settings -v  # Verbose listing
+  ```
+</ParamField>
+
+## Environment Variables
+
+<ParamField path="SBT_OPTS" type="Environment Variable">
+  JVM options for sbt.
+  
+  ```bash
+  export SBT_OPTS="-Xmx4G -XX:+UseG1GC"
+  sbt compile
+  ```
+</ParamField>
+
+<ParamField path="JAVA_OPTS" type="Environment Variable">
+  Additional JVM options (merged with SBT_OPTS).
+  
+  ```bash
+  export JAVA_OPTS="-Duser.timezone=UTC"
+  ```
+</ParamField>
+
+<ParamField path="JAVA_HOME" type="Environment Variable">
+  Java installation directory.
+  
+  ```bash
+  export JAVA_HOME=/usr/lib/jvm/java-17
+  sbt compile
+  ```
+</ParamField>
+
+## Common Workflows
+
+### Development Workflow
+
+```bash
+# Start sbt shell
+$ sbt
+
+# Continuous compilation
+sbt:my-project> ~compile
+
+# In another terminal: edit code
+# sbt automatically recompiles on save
+
+# Switch to continuous testing
+sbt:my-project> ~testQuick
+```
+
+### Clean Build
+
+```bash
+sbt clean compile test package
+```
+
+### Multi-Project Workflow
+
+```bash
+$ sbt
+sbt:root> projects
+[info]   * root
+[info]     core
+[info]     api
+[info]     cli
+
+sbt:root> project core
+sbt:core> compile
+
+sbt:core> project
+[info] core
+
+sbt:core> project root
+sbt:root> all test
+```
+
+### Release Workflow
+
+```bash
+sbt clean test package
+sbt publish
+```
+
+## Best Practices
+
+### 1. Use Interactive Shell for Development
+
+```bash
+# Good: Fast iteration with shell
+$ sbt
+sbt:my-project> ~testQuick
+
+# Avoid: Slow batch mode for repeated commands
+$ sbt test
+$ sbt test
+$ sbt test
+```
+
+### 2. Use Batch Mode for CI/CD
+
+```bash
+# Good: Clear, explicit CI command
+sbt clean coverage test coverageReport
+
+# Avoid: Interactive mode in CI
+sbt  # Then typing commands
+```
+
+### 3. Quote Commands with Arguments
+
+```bash
+# Good: Proper quoting
+sbt "testOnly com.example.*Spec"
+
+# Bad: Shell interprets *
+sbt testOnly com.example.*Spec
+```
+
+### 4. Use .sbtopts for Project-Specific Options
+
+Create a `.sbtopts` file in the project root:
+
+```
+# .sbtopts
+-J-Xmx4G
+-J-XX:+UseG1GC
+-Dsbt.color=true
+```
+
+### 5. Use Continuous Execution
+
+```bash
+# Efficient development
+sbt:my-project> ~testQuick
+
+# Avoid: Manual repeated execution
+sbt:my-project> test
+sbt:my-project> test
+sbt:my-project> test
+```
+
+## Exit Codes
+
+sbt returns exit codes for scripting:
+
+| Exit Code | Meaning |
+|-----------|----------|
+| 0 | Success |
+| 1 | Error (compilation failure, test failure, etc.) |
+| 130 | Interrupted (Ctrl+C) |
+
+```bash
+sbt test && echo "Tests passed" || echo "Tests failed"
+```
+
+## See Also
+
+- [Settings and Tasks](/reference/settings-and-tasks) - Understanding what commands execute
+- [Configurations](/reference/configurations) - Scoping commands to configurations
+- [Directory Structure](/reference/directory-structure) - Understanding project layout

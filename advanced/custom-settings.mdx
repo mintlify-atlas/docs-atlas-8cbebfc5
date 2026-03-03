@@ -1,0 +1,454 @@
+---
+title: Custom Settings and Tasks
+description: How to define custom settings and tasks in sbt
+---
+
+This guide covers how to create custom settings and tasks in sbt, including the different types of keys, initialization methods, and common patterns.
+
+## Types of Keys
+
+sbt provides three main types of keys, defined using macros in `Def.scala`:
+
+### SettingKey
+
+A `SettingKey[T]` represents a value computed once during project loading:
+
+```scala
+val myCustomSetting = settingKey[String]("A custom configuration value")
+
+myCustomSetting := "hello"
+```
+
+Settings are evaluated in dependency order and cached. They cannot depend on tasks.
+
+### TaskKey
+
+A `TaskKey[T]` represents a computation that runs on-demand:
+
+```scala
+val myTask = taskKey[Unit]("Performs custom work")
+
+myTask := {
+  val log = streams.value.log
+  log.info("Running custom task")
+}
+```
+
+Tasks can depend on both settings and other tasks.
+
+### InputKey
+
+An `InputKey[T]` represents a task that accepts command-line arguments:
+
+```scala
+val myInputTask = inputKey[Unit]("Task with arguments")
+
+myInputTask := {
+  val args: Seq[String] = spaceDelimited("<arg>").parsed
+  streams.value.log.info(s"Args: ${args.mkString(", ")}")
+}
+```
+
+## Defining Keys
+
+### Using Macros (Recommended)
+
+The preferred way to define keys is using the macro-based syntax:
+
+```scala
+val myKey = settingKey[String]("Description")
+```
+
+This creates a key at compile-time using the macro in `std/KeyMacro.scala`:
+
+```scala
+inline def settingKey[A1](inline description: String): SettingKey[A1] =
+  ${ std.KeyMacro.settingKeyImpl[A1]('description) }
+```
+
+### Key Ranks
+
+Keys have visibility ranks that control whether they appear in `settings` or `tasks` output:
+
+```scala
+import sbt.KeyRanks._
+
+val internalSetting = settingKey[String]("Internal use").withRank(Invisible)
+val publicTask = taskKey[Unit]("User-facing").withRank(APlusTask)
+```
+
+Common ranks:
+- `Invisible`: Hidden from help
+- `DSetting`/`DTask`: Default for settings/tasks
+- `APlusSetting`/`APlusTask`: High-priority, always shown
+
+## Initializing Settings and Tasks
+
+### Initialize[T]
+
+From `Def.scala`, an `Initialize[T]` represents a computation that can access other settings:
+
+```scala
+val mySetting = settingKey[String]("...")
+
+mySetting := {
+  val base = baseDirectory.value
+  val name = projectName.value
+  s"$name at $base"
+}
+```
+
+The `.value` extension method (defined in `Def.scala:390`) extracts the value:
+
+```scala
+extension [A1](inline in: Initialize[A1])
+  inline def value: A1 = InputWrapper.`wrapInit_\u2603\u2603`[A1](in)
+```
+
+### Def.task
+
+To define a task computation, use `Def.task`:
+
+```scala
+val compile = taskKey[Unit]("Compile sources")
+
+compile := Def.task {
+  val src = sourceDirectory.value
+  val cp = dependencyClasspath.value
+  // Compilation logic
+}
+```
+
+<Note>
+The `Def.task` macro (implemented in `std/TaskMacro.scala`) automatically tracks dependencies by analyzing `.value` calls in the task body.
+</Note>
+
+### Def.setting
+
+For complex setting initialization:
+
+```scala
+val complexSetting = settingKey[Config]("...")
+
+complexSetting := Def.setting {
+  Config(
+    name = name.value,
+    version = version.value,
+    custom = customSetting.value
+  )
+}
+```
+
+## Accessing Dependencies
+
+### Static Dependencies with .value
+
+The most common pattern:
+
+```scala
+val myTask = taskKey[Unit]("...")
+
+myTask := {
+  val compiled = (Compile / compile).value  // Run compile task
+  val classpath = (Compile / fullClasspath).value
+  val log = streams.value.log
+  
+  log.info("Dependencies resolved at compile time")
+}
+```
+
+Dependencies are extracted at macro expansion time.
+
+### Dynamic Dependencies
+
+For conditional dependencies, use `Def.taskDyn`:
+
+```scala
+val conditionalTask = taskKey[String]("...")
+
+conditionalTask := Def.taskDyn {
+  if (isSnapshot.value) {
+    Def.task { "snapshot-" + version.value }
+  } else {
+    Def.task { version.value }
+  }
+}
+```
+
+<Warning>
+Dynamic dependencies are less efficient because the task graph cannot be fully determined until runtime.
+</Warning>
+
+## Task Implementation Patterns
+
+### Caching
+
+Tasks can be cached to avoid recomputation:
+
+```scala
+val cachedTask = taskKey[String]("...")
+
+cachedTask := Def.cachedTask {
+  // This computation is cached based on inputs
+  val hash = (sources.value ** "*.scala").get.hashCode
+  s"Result for $hash"
+}
+```
+
+Vs uncached:
+
+```scala
+cachedTask := Def.uncachedTask {
+  // Runs every time
+  java.time.Instant.now().toString
+}
+```
+
+From `Def.scala:311-318`:
+
+```scala
+inline def cachedTask[A1](inline a1: A1): Def.Initialize[Task[A1]] =
+  ${ TaskMacro.taskMacroImpl[A1]('a1, cached = true) }
+
+inline def uncachedTask[A1](inline a1: A1): Def.Initialize[Task[A1]] =
+  ${ TaskMacro.taskMacroImpl[A1]('a1, cached = false) }
+```
+
+### Streams and Logging
+
+Access logging through `streams`:
+
+```scala
+myTask := {
+  val s = streams.value
+  s.log.info("Info message")
+  s.log.warn("Warning")
+  s.log.error("Error")
+  s.cacheDirectory  // Task-specific cache directory
+}
+```
+
+### Previous Task Results
+
+Access the previous run's result:
+
+```scala
+import sjsonnew._, BasicJsonProtocol._
+
+val incrementalTask = taskKey[Int]("...")
+
+incrementalTask := {
+  val prev = incrementalTask.previous.getOrElse(0)
+  prev + 1
+}
+```
+
+From `Def.scala:407`:
+
+```scala
+extension [A1](inline in: TaskKey[A1])
+  inline def previous(using JsonFormat[A1]): Option[A1] =
+    InputWrapper.`wrapInitTask_\u2603\u2603`[Option[A1]](Previous.runtime[A1](in))
+```
+
+## Input Tasks
+
+### Parsing Arguments
+
+Define parsers for input tasks:
+
+```scala
+import sbt.complete.DefaultParsers._
+
+val runMain = inputKey[Unit]("Run main class")
+
+runMain := {
+  val args = spaceDelimited("<arg>").parsed
+  val mainClass = args.headOption.getOrElse(
+    sys.error("Main class required")
+  )
+  // Run logic
+}
+```
+
+### Complex Parsers
+
+```scala
+val deploy = inputKey[Unit]("Deploy to environment")
+
+deploy := {
+  val parser = (Space ~> token("staging" | "production"))
+  val env = parser.parsed
+  streams.value.log.info(s"Deploying to $env")
+}
+```
+
+### Converting to Task
+
+Convert an input task to a regular task with fixed input:
+
+```scala
+val runTests = taskKey[Unit]("Run specific tests")
+
+runTests := (testOnly.toTask(" com.example.*")).value
+```
+
+From `Def.scala:427`:
+
+```scala
+inline def toTask(arg: String): Initialize[Task[A1]] =
+  import TaskExtra.singleInputTask
+  FullInstance.flatten(
+    Def.stateKey.zipWith(in)((sTask, it) =>
+      sTask map { s =>
+        Parser.parse(arg, it.parser(s)) match
+          case Right(a) => Def.value[Task[A1]](a)
+          case Left(msg) => sys.error(s"Invalid programmatic input:\n$msg")
+      }
+    )
+  )
+```
+
+## Scoping
+
+### Configuration Scoping
+
+```scala
+val myTask = taskKey[Unit]("...")
+
+// Different implementations per configuration
+Compile / myTask := {
+  streams.value.log.info("Compile scope")
+}
+
+Test / myTask := {
+  streams.value.log.info("Test scope")
+}
+```
+
+### Task-Scoped Settings
+
+```scala
+// Setting specific to a task
+myTask / scalacOptions := Seq("-Xfatal-warnings")
+
+myTask := Def.task {
+  val opts = (myTask / scalacOptions).value
+  // Use task-specific options
+}
+```
+
+## Advanced Patterns
+
+### Conditional Execution
+
+```scala
+val maybeRun = taskKey[Unit]("Conditionally run")
+
+maybeRun := Def.taskIf {
+  if (isSnapshot.value) {
+    streams.value.log.info("Snapshot version")
+  }
+}
+```
+
+### Sequential Composition
+
+```scala
+val buildAll = taskKey[Unit]("Build everything")
+
+buildAll := Def.sequential(
+  clean,
+  compile,
+  test,
+  packageBin
+).value
+```
+
+### Map and FlatMap
+
+```scala
+val derived = taskKey[String]("Derived from another task")
+
+derived := compile.map { _ =>
+  "Compilation complete"
+}.value
+
+val chained = taskKey[Int]("Chained computation")
+
+chained := version.flatMap { v =>
+  Def.task {
+    v.length
+  }
+}.value
+```
+
+## AttributeMap and Metadata
+
+Tasks can have metadata attached:
+
+```scala
+val myTask = taskKey[Unit]("...")
+
+myTask := {
+  // Task implementation
+}.tag(Tags.Test, Tags.Network)
+```
+
+Common tags:
+- `Tags.Test`: Mark as test task
+- `Tags.Network`: Requires network access
+- `Tags.Disk`: Heavy disk I/O
+- `Tags.CPU`: CPU-intensive
+
+## Best Practices
+
+1. **Use Clear Descriptions**: Help text shows in `tasks` and `settings` commands
+2. **Minimize Dynamic Dependencies**: Static dependencies enable better parallelization
+3. **Leverage Caching**: Use `Def.cachedTask` for expensive computations
+4. **Scope Appropriately**: Use configuration scoping to avoid conflicts
+5. **Handle Errors Gracefully**: Use `Result[T]` or throw descriptive exceptions
+
+## Complete Example
+
+```scala
+import sbt._
+import sbt.Keys._
+
+object CustomPlugin extends AutoPlugin {
+  object autoImport {
+    val generateDocs = taskKey[Seq[File]]("Generate documentation")
+    val docFormat = settingKey[String]("Documentation format")
+    val docOutputDir = settingKey[File]("Documentation output directory")
+  }
+  
+  import autoImport._
+  
+  override lazy val projectSettings = Seq(
+    docFormat := "html",
+    docOutputDir := target.value / "docs",
+    
+    generateDocs := Def.cachedTask {
+      val log = streams.value.log
+      val sources = (Compile / sources).value
+      val format = docFormat.value
+      val outDir = docOutputDir.value
+      
+      IO.createDirectory(outDir)
+      
+      log.info(s"Generating $format docs to $outDir")
+      sources.map { src =>
+        val out = outDir / (src.name + "." + format)
+        IO.write(out, s"Documentation for ${src.name}")
+        out
+      }
+    }.value
+  )
+}
+```
+
+## See Also
+
+- [Task Graph and Execution](/advanced/task-graph)
+- [Build State Management](/advanced/build-state)
+- [Creating Plugins](/advanced/plugins/creating-plugins)

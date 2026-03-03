@@ -1,0 +1,128 @@
+---
+title: "Introduction to sbt"
+description: "The interactive build tool for Scala, Java, and more. Learn how sbt helps you build, test, and deploy your projects with incremental compilation and powerful dependency management."
+---
+
+# Welcome to sbt
+
+sbt is a modern build tool for Scala, Java, and more. It provides a powerful, interactive environment for building, testing, and deploying your projects with features designed for developer productivity.
+
+## What is sbt?
+
+sbt (Simple Build Tool) is an open-source build tool that emphasizes:
+
+- **Developer productivity** through an interactive shell and fast incremental compilation
+- **Flexible configuration** using Scala-based build definitions
+- **Powerful dependency management** with support for Maven and Ivy repositories
+- **Extensibility** through a rich plugin ecosystem
+
+<Note>
+sbt 2.x is the latest major version, bringing improved performance, better error messages, and enhanced features while maintaining compatibility with existing builds.
+</Note>
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="Incremental Compilation" icon="bolt">
+    Zinc, sbt's incremental compiler, only recompiles the sources that changed and their dependencies, dramatically speeding up your development cycle.
+  </Card>
+  
+  <Card title="Interactive Shell" icon="terminal">
+    The sbt shell keeps your project loaded and ready, allowing you to run tasks instantly without waiting for JVM startup on every command.
+  </Card>
+  
+  <Card title="Multi-Project Builds" icon="folder-tree">
+    Easily manage complex projects with multiple submodules, shared settings, and cross-project dependencies in a single build definition.
+  </Card>
+  
+  <Card title="Plugin Ecosystem" icon="puzzle-piece">
+    Extend sbt with hundreds of community plugins for everything from code coverage to deployment, or write your own custom plugins.
+  </Card>
+  
+  <Card title="Parallel Execution" icon="list-check">
+    sbt automatically parallelizes independent tasks across your multi-project build, maximizing CPU utilization.
+  </Card>
+  
+  <Card title="Continuous Testing" icon="arrows-rotate">
+    Watch mode automatically re-runs tasks when source files change, perfect for test-driven development workflows.
+  </Card>
+</CardGroup>
+
+## Build Definition as Code
+
+sbt uses Scala for its build definitions, giving you:
+
+- **Type safety** to catch errors at build definition time
+- **Powerful abstractions** for complex build logic
+- **Reusable components** through shared settings and plugins
+- **IDE support** with autocompletion and refactoring
+
+Here's a simple example:
+
+```scala build.sbt
+name := "my-project"
+version := "0.1.0"
+scalaVersion := "3.8.2"
+
+libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.19" % Test
+```
+
+## Designed for the JVM Ecosystem
+
+While sbt excels at building Scala projects, it's equally capable with:
+
+- **Java** projects with full support for javac
+- **Scala.js** for compiling Scala to JavaScript  
+- **Scala Native** for native executables
+- **Mixed Scala/Java** codebases
+
+## Battle-Tested and Trusted
+
+sbt powers builds for:
+
+- The Scala compiler itself
+- Major open-source frameworks like Akka, Play Framework, and Spark
+- Thousands of companies worldwide
+- Projects ranging from small libraries to large microservice architectures
+
+## Getting Started
+
+Ready to start building with sbt? Here's your roadmap:
+
+<CardGroup cols={3}>
+  <Card title="Install sbt" icon="download" href="/installation">
+    Get sbt installed on macOS, Linux, or Windows in just a few minutes.
+  </Card>
+  
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Create your first "Hello World" project and learn the basics of the sbt shell.
+  </Card>
+  
+  <Card title="Build Definition" icon="file-code" href="/build-definition">
+    Learn how to configure your project with build.sbt and manage dependencies.
+  </Card>
+</CardGroup>
+
+## Join the Community
+
+sbt has an active community ready to help:
+
+- **Discord**: Join the [#sbt channel on Scala Discord](https://discord.com/invite/scala)
+- **Stack Overflow**: Ask questions tagged with [sbt](https://stackoverflow.com/questions/tagged/sbt)
+- **GitHub**: Report issues or contribute at [sbt/sbt](https://github.com/sbt/sbt)
+
+<Tip>
+New to Scala? No problem! sbt works great for Java projects too, and learning sbt is a gentle introduction to Scala's syntax.
+</Tip>
+
+## What's New in sbt 2.x
+
+sbt 2.x brings significant improvements:
+
+- **Better Performance**: Faster startup times and improved incremental compilation
+- **Enhanced Error Messages**: Clearer diagnostics to help you fix problems quickly
+- **Modern JVM Support**: Optimized for Java 17+ with native client support (sbtn)
+- **Improved Dependency Resolution**: More reliable and faster with Coursier
+- **Scala 3 First**: Full support for Scala 3 features and tooling
+
+Let's get you started with [installing sbt](/installation)!

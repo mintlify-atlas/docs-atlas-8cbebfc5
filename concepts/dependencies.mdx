@@ -1,0 +1,444 @@
+---
+title: Dependencies
+description: Managing library dependencies in sbt with ModuleID and resolvers
+---
+
+## Overview
+
+sbt uses Apache Ivy (and optionally Coursier) for dependency management. Dependencies are declared using the `libraryDependencies` setting and ModuleID syntax.
+
+## Library Dependencies
+
+From Keys.scala:627:
+
+```scala
+val libraryDependencies = settingKey[Seq[ModuleID]](
+  "Declares managed dependencies."
+).withRank(APlusSetting)
+```
+
+### Basic Syntax
+
+The fundamental dependency declaration uses the `%` and `%%` operators:
+
+```scala
+libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.17"
+```
+
+Breaking this down:
+- `"org.scalatest"` - Organization/group ID
+- `%%` - Scala version suffix operator (adds `_2.13`, `_3`, etc.)
+- `"scalatest"` - Artifact name
+- `%` - Version separator
+- `"3.2.17"` - Version number
+
+<Note>
+The `%%` operator automatically appends the Scala binary version. Use `%` for Java libraries or when you need exact control over the artifact name.
+</Note>
+
+### Single Percent vs Double Percent
+
+```scala
+// %% - Scala library (automatically adds _2.13 or _3)
+libraryDependencies += "org.typelevel" %% "cats-core" % "2.10.0"
+// Resolves to: org.typelevel:cats-core_2.13:2.10.0 (if using Scala 2.13)
+
+// % - Java library or exact artifact name
+libraryDependencies += "com.google.guava" % "guava" % "32.1.3-jre"
+// Resolves to: com.google.guava:guava:32.1.3-jre
+```
+
+## Dependency Configurations
+
+Dependencies can be scoped to specific configurations:
+
+```scala
+// Test dependencies
+libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.17" % Test
+
+// Compile-time only
+libraryDependencies += "org.scala-lang" % "scala-reflect" % scalaVersion.value % Provided
+
+// Multiple configurations
+libraryDependencies += "ch.qos.logback" % "logback-classic" % "1.4.11" % "compile;test"
+```
+
+Built-in configurations:
+- `Compile` - Compile and runtime (default)
+- `Test` - Test compilation and execution only  
+- `Runtime` - Runtime only, not needed for compilation
+- `Provided` - Compile-time only, provided by runtime environment
+
+## Real-World Examples from sbt
+
+From the sbt build.sbt:247-249:
+
+```scala
+libraryDependencies ++= Seq(sjsonNewScalaJson.value)
+libraryDependencies ++= Seq(scalaPar)
+conflictWarning := ConflictWarning.disable
+```
+
+### Multiple Dependencies
+
+Adding multiple dependencies at once:
+
+```scala
+libraryDependencies ++= Seq(
+  "org.typelevel" %% "cats-core" % "2.10.0",
+  "org.typelevel" %% "cats-effect" % "3.5.2",
+  "co.fs2" %% "fs2-core" % "3.9.3",
+  "org.scalatest" %% "scalatest" % "3.2.17" % Test
+)
+```
+
+## Dependency Overrides
+
+From Keys.scala:628-630:
+
+```scala
+val dependencyOverrides = settingKey[Seq[ModuleID]](
+  "Declares managed dependency overrides."
+).withRank(BSetting)
+
+val excludeDependencies = settingKey[Seq[InclExclRule]](
+  "Declares managed dependency exclusions."
+).withRank(BSetting)
+```
+
+### Overriding Transitive Dependencies
+
+```scala
+// Force a specific version
+dependencyOverrides += "com.fasterxml.jackson.core" % "jackson-databind" % "2.15.3"
+```
+
+### Excluding Transitive Dependencies
+
+```scala
+// Exclude a specific transitive dependency
+libraryDependencies += "org.apache.spark" %% "spark-core" % "3.5.0" exclude(
+  "org.slf4j", "slf4j-log4j12"
+)
+
+// Exclude multiple dependencies
+libraryDependencies += "org.apache.hadoop" % "hadoop-client" % "3.3.6" excludeAll(
+  ExclusionRule(organization = "javax.servlet"),
+  ExclusionRule(organization = "org.mortbay.jetty")
+)
+```
+
+## ModuleID and Artifacts
+
+### ModuleID Structure
+
+The `ModuleID` case class represents a dependency:
+
+```scala
+// Conceptual structure (from librarymanagement)
+case class ModuleID(
+  organization: String,
+  name: String,
+  revision: String,
+  configurations: Option[String] = None,
+  isChanging: Boolean = false,
+  isTransitive: Boolean = true,
+  explicitArtifacts: Seq[Artifact] = Nil,
+  exclusions: Seq[ExclusionRule] = Nil,
+  extraAttributes: Map[String, String] = Map.empty,
+  crossVersion: CrossVersion = CrossVersion.Disabled
+)
+```
+
+### Classifiers
+
+Fetch additional artifacts like sources or javadocs:
+
+```scala
+// Sources
+libraryDependencies += "com.typesafe.akka" %% "akka-actor" % "2.8.5" % "compile;sources"
+
+// Javadocs
+libraryDependencies += "com.typesafe.akka" %% "akka-actor" % "2.8.5" % "compile;docs"
+
+// Or using classifier method
+libraryDependencies += (
+  "com.typesafe.akka" %% "akka-actor" % "2.8.5"
+).classifier("sources")
+```
+
+## Resolvers
+
+Resolvers specify where to look for dependencies.
+
+From Keys.scala:670-688:
+
+```scala
+val sbtResolver = settingKey[Resolver](
+  "Provides a resolver for obtaining sbt as a dependency."
+).withRank(BMinusSetting)
+
+val projectResolver = settingKey[Resolver](
+  "Resolver that locates inter-project dependencies."
+).withRank(DSetting)
+
+val resolvers = settingKey[Seq[Resolver]](
+  "The user-defined additional resolvers for automatically managed dependencies."
+).withRank(BPlusSetting)
+
+val fullResolvers = taskKey[Seq[Resolver]](
+  "Combines the project resolver, default resolvers, and user-defined resolvers."
+).withRank(DTask)
+```
+
+### Adding Resolvers
+
+```scala
+// Maven Central (included by default)
+resolvers += Resolver.mavenCentral
+
+// Custom Maven repository
+resolvers += "Artima Maven Repository" at "https://repo.artima.com/releases"
+
+// Sonatype snapshots
+resolvers += Resolver.sonatypeOssRepos("snapshots")
+
+// Local Maven repository
+resolvers += Resolver.mavenLocal
+```
+
+From build.sbt:46:
+
+```scala
+ThisBuild / resolvers += Resolver.mavenLocal
+```
+
+### Repository Types
+
+```scala
+// Maven repository
+resolvers += "Maven Repo" at "https://repo.example.com/maven"
+
+// Ivy repository  
+resolvers += Resolver.url("Ivy Repo",
+  url("https://repo.example.com/ivy"))(Resolver.ivyStylePatterns)
+
+// Local repository
+resolvers += Resolver.file("Local Ivy", file(Path.userHome + "/.ivy2/local"))(Resolver.ivyStylePatterns)
+```
+
+## Ivy Configurations
+
+From Keys.scala:623-636:
+
+```scala
+val offline = settingKey[Boolean](
+  "Configures sbt to work without a network connection where possible."
+).withRank(ASetting)
+
+val ivyPaths = settingKey[IvyPaths](
+  "Configures paths used by Ivy for dependency management."
+).withRank(DSetting)
+
+val ivyXML = settingKey[NodeSeq](
+  "Defines inline Ivy XML for configuring dependency management."
+).withRank(BSetting)
+
+val ivyValidate = settingKey[Boolean](
+  "Enables/disables Ivy validation of module metadata."
+).withRank(BSetting)
+```
+
+### Ivy Settings
+
+```scala
+// Work offline (use only cached dependencies)
+offline := true
+
+// Custom Ivy settings
+ivyPaths := IvyPaths(
+  baseDirectory.value,
+  Some(target.value / ".ivy2")
+)
+```
+
+## Coursier Integration
+
+Coursier is a faster alternative dependency resolver:
+
+```scala
+// Coursier is used by default in recent sbt versions
+// Force Coursier usage
+useCoursier := true
+
+// Or disable it
+useCoursier := false
+```
+
+## Inter-Project Dependencies
+
+From Keys.scala:631-632:
+
+```scala
+val allDependencies = taskKey[Seq[ModuleID]](
+  "Inter-project and library dependencies."
+)
+val projectDependencies = taskKey[Seq[ModuleID]](
+  "Inter-project dependencies."
+)
+```
+
+See [Multi-Project Builds](./multi-project-builds) for details on `dependsOn`.
+
+## Dependency Management Settings
+
+### Version Schemes
+
+From Keys.scala:652-653:
+
+```scala
+val versionScheme = settingKey[Option[String]](
+  """Version scheme: Some("early-semver"), Some("pvp"), or Some("semver-spec")"""
+)
+
+val libraryDependencySchemes = settingKey[Seq[ModuleID]](
+  """Version scheme for specific modules: "org" %% "name" % "<scheme>""""
+)
+```
+
+```scala
+// Declare version scheme for your project
+versionScheme := Some("early-semver")
+
+// Declare version scheme for dependencies
+libraryDependencySchemes += "org.typelevel" %% "cats-core" % "early-semver"
+```
+
+### Conflict Management
+
+From Keys.scala:664-669:
+
+```scala
+val conflictWarning = settingKey[ConflictWarning](
+  "Configures warnings for conflicts in dependency management."
+)
+
+val conflictManager = settingKey[ConflictManager](
+  "Selects the conflict manager to use for dependency management."
+)
+```
+
+```scala
+// Fail build on dependency conflicts
+conflictManager := ConflictManager.strict
+
+// Show warnings
+conflictWarning := ConflictWarning.default
+
+// Disable conflict warnings
+conflictWarning := ConflictWarning.disable
+```
+
+## Update and Retrieval
+
+From Keys.scala:643-646:
+
+```scala
+val retrieveManaged = settingKey[Boolean](
+  "If true, enables retrieving dependencies to the current build."
+)
+
+val retrieveManagedSync = settingKey[Boolean](
+  "If true, enables synchronizing retrieved dependencies by removing unneeded files."
+)
+
+val managedDirectory = settingKey[File](
+  "Directory to which managed dependencies are retrieved."
+)
+```
+
+```scala
+// Copy dependencies to lib_managed/
+retrieveManaged := true
+
+// Sync directory (delete old dependencies)
+retrieveManagedSync := true
+
+// Custom managed directory
+managedDirectory := baseDirectory.value / "lib"
+```
+
+## Practical Examples
+
+### Common Dependency Patterns
+
+```scala
+// Web framework
+libraryDependencies ++= Seq(
+  "org.http4s" %% "http4s-dsl" % "0.23.23",
+  "org.http4s" %% "http4s-ember-server" % "0.23.23",
+  "org.http4s" %% "http4s-ember-client" % "0.23.23"
+)
+
+// JSON libraries
+libraryDependencies ++= Seq(
+  "io.circe" %% "circe-core" % "0.14.6",
+  "io.circe" %% "circe-generic" % "0.14.6",
+  "io.circe" %% "circe-parser" % "0.14.6"
+)
+
+// Testing stack
+libraryDependencies ++= Seq(
+  "org.scalatest" %% "scalatest" % "3.2.17" % Test,
+  "org.scalatestplus" %% "scalacheck-1-17" % "3.2.17.0" % Test,
+  "org.scalacheck" %% "scalacheck" % "1.17.0" % Test
+)
+```
+
+### Conditional Dependencies
+
+```scala
+libraryDependencies ++= {
+  CrossVersion.partialVersion(scalaVersion.value) match {
+    case Some((2, 13)) => 
+      Seq("org.scala-lang.modules" %% "scala-parallel-collections" % "1.0.4")
+    case _ => 
+      Seq.empty
+  }
+}
+```
+
+## Best Practices
+
+<Tip>
+**Use `%%` for Scala libraries**: This ensures you get the version compiled for your Scala version.
+</Tip>
+
+<Note>
+**Organize dependencies logically**: Group related dependencies together and add comments to explain why each dependency is needed.
+</Note>
+
+<Warning>
+**Be careful with SNAPSHOT versions**: They can change unexpectedly. Pin to specific versions for reproducible builds.
+</Warning>
+
+```scala
+// Good - organized and documented
+libraryDependencies ++= Seq(
+  // Core dependencies
+  "org.typelevel" %% "cats-core" % "2.10.0",
+  "org.typelevel" %% "cats-effect" % "3.5.2",
+  
+  // JSON serialization
+  "io.circe" %% "circe-core" % "0.14.6",
+  
+  // Testing
+  "org.scalatest" %% "scalatest" % "3.2.17" % Test
+)
+```
+
+## References
+
+- [Build Definition](./build-definition) - Overall build structure
+- [Multi-Project Builds](./multi-project-builds) - Inter-project dependencies
+- [Scopes](./scopes) - Configuration-specific dependencies

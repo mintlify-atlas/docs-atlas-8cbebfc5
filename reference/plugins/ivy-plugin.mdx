@@ -1,0 +1,435 @@
+---
+title: IvyPlugin
+description: Plugin for Ivy-based dependency resolution, artifact publishing, and repository management
+---
+
+The `IvyPlugin` enables dependency resolution and artifact publishing using Apache Ivy. It provides core tasks for updating dependencies, creating POM files, and publishing to repositories. This plugin is automatically enabled on all projects.
+
+## Activation
+
+<ParamField name="Trigger" type="allRequirements">
+  Automatically enabled on all projects
+</ParamField>
+
+<ParamField name="Requires" type="CorePlugin">
+  Depends on CorePlugin for fundamental build infrastructure
+</ParamField>
+
+## Overview
+
+IvyPlugin is the foundation for dependency management in sbt. It provides:
+
+- **Dependency Resolution**: Resolving and retrieving library dependencies
+- **Artifact Publishing**: Publishing artifacts to Ivy, Maven, and custom repositories
+- **POM Generation**: Creating Maven POM files from project metadata
+- **Repository Management**: Configuring resolvers and credentials
+- **Module Metadata**: Managing project organization, version, and artifact information
+
+## Core Tasks
+
+From the plugin documentation:
+
+<ParamField name="update" type="Task[UpdateReport]">
+  Resolves and retrieves dependencies, returning a report of resolved modules and artifacts.
+</ParamField>
+
+<ParamField name="makePom" type="Task[File]">
+  Generates a Maven POM file from the project's module metadata and dependencies.
+</ParamField>
+
+<ParamField name="publish" type="Task[Unit]">
+  Publishes artifacts to remote repositories configured in `publishTo`.
+</ParamField>
+
+<ParamField name="publishLocal" type="Task[Unit]">
+  Publishes artifacts to the local Ivy repository (typically `~/.ivy2/local`).
+</ParamField>
+
+<ParamField name="publishM2" type="Task[Unit]">
+  Publishes artifacts to the local Maven repository (typically `~/.m2/repository`).
+</ParamField>
+
+## Global Settings
+
+Provided through `globalIvyCore`:
+
+### Module Identity
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `organization` | `String` | `"0.1.0-SNAPSHOT"` | Module organization/group ID |
+| `version` | `String` | `"0.1.0-SNAPSHOT"` | Module version |
+| `versionScheme` | `Option[VersionScheme]` | `None` | Versioning scheme (e.g., semver, pvp) |
+
+### Dependency Configuration
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `scalaOrganization` | `String` | `"org.scala-lang"` | Organization for Scala dependencies |
+| `scalaArtifacts` | `Seq[String]` | Standard artifacts | Names of Scala library artifacts |
+| `crossVersion` | `CrossVersion` | `Disabled()` | Cross-version strategy for dependencies |
+| `internalConfigurationMap` | `Map[Configuration, Configuration]` | Ivy internal map | Maps configurations to Ivy equivalents |
+
+### Dependency Resolution
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `conflictManager` | `ConflictManager` | Default | Strategy for resolving version conflicts |
+| `updateOptions` | `UpdateOptions` | Default options | Options controlling update behavior |
+| `forceUpdatePeriod` | `Option[FiniteDuration]` | `None` | Force updates after this period |
+| `checksums` | `Seq[String]` | From boot config | Checksum algorithms to verify |
+
+### Artifact Types
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `classpathTypes` | `Set[String]` | JAR types | Artifact types included in classpaths |
+| `artifactClassifier` | `Option[String]` | `None` | Default artifact classifier |
+
+### Retrieval
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `retrieveManaged` | `Boolean` | `false` | Copy managed dependencies to `lib_managed` |
+| `retrieveManagedSync` | `Boolean` | `false` | Delete removed dependencies from `lib_managed` |
+| `configurationsToRetrieve` | `Option[Set[Configuration]]` | `None` | Configurations to retrieve |
+
+### Tracking
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `trackInternalDependencies` | `TrackLevel` | `TrackAlways` | Track changes in inter-project dependencies |
+| `exportToInternal` | `TrackLevel` | `TrackAlways` | Export products to dependent projects |
+| `exportJars` | `Boolean` | `true` | Export packaged JARs instead of class directories |
+
+### Repositories
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `sbtResolver` | `Resolver` | Maven Central or snapshots | Resolver for sbt artifacts |
+| `sbtResolvers` | `Seq[Resolver]` | `Vector(sbtResolver)` | Resolvers for sbt dependencies |
+| `credentials` | `Seq[Credentials]` | From environment | Repository authentication credentials |
+
+### POM Customization
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `pomExtra` | `NodeSeq` | Empty | Extra XML to include in generated POMs |
+| `pomPostProcess` | `Node => Node` | Identity | Transform generated POM XML |
+| `pomAllRepositories` | `Boolean` | `false` | Include all project resolvers in POM |
+| `pomIncludeRepository` | `MavenRepository => Boolean` | Default filter | Filter repositories in POM |
+
+### Platform
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `platform` | `Platform` | `Platform.jvm` | Target platform (JVM, JS, Native) |
+
+### Coursier Settings
+
+sbt uses Coursier as the default dependency resolver:
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `csrLogger` | `Task[CacheLogger]` | Coursier logger | Logger for Coursier operations |
+| `csrMavenProfiles` | `Set[String]` | Empty set | Maven profiles to activate |
+| `csrReconciliations` | `Seq[ModuleMatchers]` | Relaxed for all | Version reconciliation rules |
+| `csrMavenDependencyOverride` | `Boolean` | `false` | Allow Maven dependency overrides |
+| `csrLocalArtifactsShouldBeCached` | `Boolean` | `false` | Cache local artifacts |
+| `csrCacheDirectory` | `File` | Default cache | Coursier cache location |
+| `csrSameVersions` | `Seq[Set[InclExclRule]]` | `Nil` | Module sets that must use same version |
+| `csrExtraCredentials` | `Seq[Credentials]` | `Nil` | Additional Coursier credentials |
+
+### Sonatype Publishing
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `stagingDirectory` | `File` | `target/sona-staging` | Staging directory for bundles |
+| `localStaging` | `Option[Resolver]` | Local staging resolver | Resolver for local staging |
+| `sonaBundle` | `Task[File]` | Bundle creation task | Create Sonatype bundle |
+| `sonaUploadRequestTimeout` | `FiniteDuration` | `10 minutes` | Upload request timeout |
+
+## Project Settings
+
+Provided through `ivyBaseSettings` and `ivyPublishSettings`:
+
+### Module Metadata
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `name` | `String` | Project ID | Project/module name |
+| `normalizedName` | `String` | Normalized name | Name normalized for module ID |
+| `organization` | `String` | `normalizedName` | Organization/group ID |
+| `organizationName` | `String` | `organization` | Human-readable org name |
+| `organizationHomepage` | `Option[URL]` | `homepage` | Organization website |
+| `description` | `String` | `name` | Project description |
+| `homepage` | `Option[URL]` | `None` | Project homepage |
+| `startYear` | `Option[Int]` | `None` | Project start year |
+| `licenses` | `Seq[(String, URL)]` | `Nil` | Project licenses |
+| `developers` | `Seq[Developer]` | `Nil` | Project developers |
+| `scmInfo` | `Option[ScmInfo]` | `None` | Source control information |
+
+### Project Info
+
+<ParamField name="projectInfo" type="ModuleInfo">
+  Aggregated module information combining name, description, homepage, licenses, organization details, SCM info, and developers.
+</ParamField>
+
+### Version Detection
+
+<ParamField name="isSnapshot" type="Boolean">
+  Automatically detects if version ends with `-SNAPSHOT`. Can be overridden.
+</ParamField>
+
+### Dependency Management
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `libraryDependencies` | `Seq[ModuleID]` | `Nil` | Project library dependencies |
+| `libraryDependencySchemes` | `Seq[(ModuleID, VersionScheme)]` | `Nil` | Version schemes for dependencies |
+| `dependencyOverrides` | `Seq[ModuleID]` | Empty | Force specific dependency versions |
+| `excludeDependencies` | `Seq[InclExclRule]` | `Nil` | Dependencies to exclude |
+| `allDependencies` | `Task[Seq[ModuleID]]` | Computed | All project dependencies |
+| `buildDependencies` | `BuildDependencies` | Computed | Inter-project dependency graph |
+
+### Unmanaged Dependencies
+
+<ParamField name="unmanagedBase" type="File">
+  Directory containing unmanaged dependency JARs. Defaults to `baseDirectory / "lib"`.
+</ParamField>
+
+### Resolvers
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `resolvers` | `Seq[Resolver]` | `Nil` | Additional dependency resolvers |
+| `externalResolvers` | `Task[Seq[Resolver]]` | Computed | All external resolvers |
+| `fullResolvers` | `Task[Seq[Resolver]]` | Computed | All resolvers including inter-project |
+| `bootResolvers` | `Task[Option[Seq[Resolver]]]` | From boot config | Resolvers from sbt launcher |
+| `appResolvers` | `Task[Option[Seq[Resolver]]]` | From app config | Application-level resolvers |
+| `overrideBuildResolvers` | `Boolean` | Computed | Override resolvers with boot config |
+| `includePluginResolvers` | `Boolean` | Computed | Include plugin resolvers |
+
+### Conflict Management
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `conflictWarning` | `ConflictWarning` | Default | Configuration for conflict warnings |
+| `evictionWarningOptions` | `EvictionWarningOptions` | Default | Options for eviction warnings |
+| `compatibilityWarningOptions` | `CompatibilityWarningOptions` | Default | Options for compatibility warnings |
+| `evictionErrorLevel` | `Level` | `Level.Error` | Log level for eviction errors |
+| `assumedEvictionErrorLevel` | `Level` | `Level.Info` | Log level for assumed evictions |
+| `assumedVersionScheme` | `VersionScheme` | `VersionScheme.Always` | Default version scheme |
+| `assumedVersionSchemeJava` | `VersionScheme` | `VersionScheme.Always` | Version scheme for Java deps |
+
+### Logging
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `ivyLoggingLevel` | `UpdateLogging` | Quiet in CI, Default otherwise | Ivy logging verbosity |
+| `ivyValidate` | `Boolean` | `false` | Validate Ivy files |
+| `offline` | `Boolean` | From system property | Work in offline mode |
+
+### Ivy XML
+
+<ParamField name="ivyXML" type="NodeSeq">
+  Extra XML to include in generated Ivy files. Defaults to empty.
+</ParamField>
+
+### Default Configuration
+
+<ParamField name="defaultConfiguration" type="Option[Configuration]">
+  Default configuration for dependencies. Defaults to `Some(Configurations.Compile)`.
+</ParamField>
+
+### Publishing
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `artifacts` | `Seq[Artifact]` | `Nil` | Artifacts produced by project |
+| `packagedArtifacts` | `Task[Map[Artifact, File]]` | Empty map | Map of artifacts to files |
+| `publishTo` | `Option[Resolver]` | `None` | Repository for publishing |
+| `publishConfiguration` | `PublishConfiguration` | Computed | Configuration for publish task |
+| `publishLocalConfiguration` | `PublishConfiguration` | Computed | Configuration for publishLocal |
+| `publishM2Configuration` | `PublishConfiguration` | Computed | Configuration for publishM2 |
+| `makePomConfiguration` | `MakePomConfiguration` | Computed | Configuration for makePom |
+| `deliver` | `Task[File]` | Deliver task | Create Ivy file for publishing |
+| `deliverLocal` | `Task[File]` | Local deliver task | Create local Ivy file |
+| `makeIvyXml` | `Task[File]` | Ivy XML task | Generate Ivy XML file |
+
+### Resolved Dependencies
+
+<ParamField name="resolvedDependencies" type="Task[Seq[ModuleID]]">
+  Dependencies with wildcard versions resolved to concrete versions from the update report.
+</ParamField>
+
+### Sonatype Central
+
+<ParamField name="sonaDeploymentName" type="String">
+  Unique deployment name for Sonatype Central publishing. Format: `organization:name:version:uuid`.
+</ParamField>
+
+### Scala Version Alignment
+
+<ParamField name="csrSameVersions" type="Seq[Set[InclExclRule]]">
+  Automatically configured to align Scala artifact versions based on `scalaVersion`. For Scala 2.x and Scala 3.0-3.7, aligns all Scala 2 artifacts. For Scala 3.8+, only aligns library artifacts.
+</ParamField>
+
+## Usage Examples
+
+### Add Library Dependencies
+
+```scala
+libraryDependencies ++= Seq(
+  "org.typelevel" %% "cats-core" % "2.9.0",
+  "org.scalatest" %% "scalatest" % "3.2.15" % Test
+)
+```
+
+### Configure Resolvers
+
+```scala
+resolvers += "Sonatype OSS Snapshots" at "https://oss.sonatype.org/content/repositories/snapshots"
+```
+
+### Set Organization and Version
+
+```scala
+organization := "com.example"
+version := "1.0.0"
+```
+
+### Customize POM
+
+```scala
+pomExtra := (
+  <developers>
+    <developer>
+      <id>dev</id>
+      <name>Developer Name</name>
+    </developer>
+  </developers>
+)
+```
+
+### Configure Publishing
+
+```scala
+publishTo := Some(
+  if (isSnapshot.value)
+    "snapshots" at "https://oss.sonatype.org/content/repositories/snapshots"
+  else
+    "releases" at "https://oss.sonatype.org/service/local/staging/deploy/maven2"
+)
+```
+
+### Add Credentials
+
+```scala
+credentials += Credentials(Path.userHome / ".sbt" / ".credentials")
+```
+
+### Exclude Dependencies
+
+```scala
+libraryDependencies += "com.example" %% "library" % "1.0" exclude("org.unwanted", "artifact")
+
+// Or globally
+excludeDependencies ++= Seq(
+  ExclusionRule("org.unwanted", "artifact")
+)
+```
+
+### Override Dependency Version
+
+```scala
+dependencyOverrides += "org.scala-lang" % "scala-library" % scalaVersion.value
+```
+
+### Enable Offline Mode
+
+```scala
+offline := true
+```
+
+### Configure Update Logging
+
+```scala
+ivyLoggingLevel := UpdateLogging.Quiet
+```
+
+### Work with Snapshots
+
+```scala
+version := "1.0.0-SNAPSHOT"
+isSnapshot := true // auto-detected, but can override
+```
+
+### Configure Module Info
+
+```scala
+organization := "com.example"
+organizationName := "Example Organization"
+organizationHomepage := Some(url("https://example.com"))
+startYear := Some(2024)
+licenses := Seq("Apache-2.0" -> url("https://www.apache.org/licenses/LICENSE-2.0.txt"))
+developers := List(
+  Developer(
+    id = "dev1",
+    name = "Developer One",
+    email = "dev1@example.com",
+    url = url("https://example.com/dev1")
+  )
+)
+scmInfo := Some(
+  ScmInfo(
+    url("https://github.com/example/project"),
+    "scm:git@github.com:example/project.git"
+  )
+)
+```
+
+## Common Tasks
+
+### Update Dependencies
+
+```bash
+sbt update
+```
+
+### Publish Locally
+
+```bash
+sbt publishLocal
+```
+
+### Publish to Maven Local
+
+```bash
+sbt publishM2
+```
+
+### Generate POM
+
+```bash
+sbt makePom
+```
+
+### Publish to Remote
+
+```bash
+sbt publish
+```
+
+<Note>
+  IvyPlugin uses Coursier as the default dependency resolver for better performance and reliability. Legacy Ivy resolver can be used by configuring `useCoursier := false`, but this is not recommended.
+</Note>
+
+## Related Plugins
+
+- [CorePlugin](/reference/plugins/core-plugin) - Required dependency providing build infrastructure
+- [JvmPlugin](/reference/plugins/jvm-plugin) - Builds on IvyPlugin for JVM project capabilities
+
+## Source
+
+IvyPlugin implementation: `sbt.plugins.IvyPlugin`

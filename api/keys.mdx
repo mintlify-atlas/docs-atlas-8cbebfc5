@@ -1,0 +1,587 @@
+---
+title: "Keys API"
+description: "Core setting and task keys in sbt for project configuration and build execution"
+---
+
+# Keys API
+
+The `Keys` object (defined in `sbt.Keys`) provides all the core settings and task keys used throughout sbt. These keys are the fundamental building blocks for configuring your build.
+
+## Project Identity Keys
+
+### name
+
+```scala
+val name: SettingKey[String]
+```
+
+Project name.
+
+<ParamField path="name" type="SettingKey[String]" required>
+  The name of the project. This is used for dependency management, artifact naming, and display purposes.
+</ParamField>
+
+**Example:**
+```scala
+name := "my-project"
+```
+
+**Location:** `Keys.scala:402`
+
+### organization
+
+```scala
+val organization: SettingKey[String]
+```
+
+Organization/group ID for the project.
+
+<ParamField path="organization" type="SettingKey[String]" required>
+  The organization or group identifier, typically in reverse domain notation (e.g., "com.example").
+</ParamField>
+
+**Example:**
+```scala
+organization := "com.example"
+```
+
+**Location:** `Keys.scala:408`
+
+### version
+
+```scala
+val version: SettingKey[String]
+```
+
+The version/revision of the current module.
+
+<ParamField path="version" type="SettingKey[String]" required>
+  Semantic version string for the project (e.g., "1.0.0", "0.1.0-SNAPSHOT").
+</ParamField>
+
+**Example:**
+```scala
+version := "1.0.0"
+```
+
+**Location:** `Keys.scala:599`
+
+## Scala Configuration Keys
+
+### scalaVersion
+
+```scala
+val scalaVersion: SettingKey[String]
+```
+
+The version of Scala used for building.
+
+<ParamField path="scalaVersion" type="SettingKey[String]" required>
+  Scala version for compilation (e.g., "2.13.12", "3.3.1").
+</ParamField>
+
+**Example:**
+```scala
+scalaVersion := "3.3.1"
+```
+
+**Location:** `Keys.scala:228`
+
+### scalaBinaryVersion
+
+```scala
+val scalaBinaryVersion: SettingKey[String]
+```
+
+The Scala version substring describing binary compatibility.
+
+<ParamField path="scalaBinaryVersion" type="SettingKey[String]">
+  Binary version used for cross-building (e.g., "2.13" for Scala 2.13.x, "3" for Scala 3.x).
+</ParamField>
+
+**Location:** `Keys.scala:230`
+
+### crossScalaVersions
+
+```scala
+val crossScalaVersions: SettingKey[Seq[String]]
+```
+
+The versions of Scala used when cross-building.
+
+<ParamField path="crossScalaVersions" type="SettingKey[Seq[String]]">
+  List of Scala versions to build against when running `+compile`, `+publish`, etc.
+</ParamField>
+
+**Example:**
+```scala
+crossScalaVersions := Seq("2.13.12", "3.3.1")
+```
+
+**Location:** `Keys.scala:232`
+
+### scalaOrganization
+
+```scala
+val scalaOrganization: SettingKey[String]
+```
+
+Organization/group ID of the Scala used in the project.
+
+<ParamField path="scalaOrganization" type="SettingKey[String]">
+  Default value is `"org.scala-lang"`. Advanced setting for Scala language clones.
+</ParamField>
+
+**Location:** `Keys.scala:227`
+
+## Dependency Management Keys
+
+### libraryDependencies
+
+```scala
+val libraryDependencies: SettingKey[Seq[ModuleID]]
+```
+
+Declares managed dependencies.
+
+<ParamField path="libraryDependencies" type="SettingKey[Seq[ModuleID]]" required>
+  List of library dependencies for the project. Use `%`, `%%`, or `%%%` operators to declare dependencies.
+</ParamField>
+
+**Example:**
+```scala
+libraryDependencies ++= Seq(
+  "org.typelevel" %% "cats-core" % "2.10.0",
+  "org.scalatest" %% "scalatest" % "3.2.17" % Test
+)
+```
+
+**Location:** `Keys.scala:627`
+
+### resolvers
+
+```scala
+val resolvers: SettingKey[Seq[Resolver]]
+```
+
+The user-defined additional resolvers for automatically managed dependencies.
+
+<ParamField path="resolvers" type="SettingKey[Seq[Resolver]]">
+  Custom Maven or Ivy repositories to search for dependencies.
+</ParamField>
+
+**Example:**
+```scala
+resolvers += "Sonatype OSS Snapshots" at "https://oss.sonatype.org/content/repositories/snapshots"
+```
+
+**Location:** `Keys.scala:608`
+
+## Compilation Keys
+
+### compile
+
+```scala
+val compile: TaskKey[CompileAnalysis]
+```
+
+Compiles sources.
+
+<ParamField path="compile" type="TaskKey[CompileAnalysis]" required>
+  Main compilation task that processes Scala and Java sources.
+</ParamField>
+
+**Example:**
+```scala
+Compile / compile
+Test / compile
+```
+
+**Location:** `Keys.scala:262`
+
+### scalacOptions
+
+```scala
+val scalacOptions: TaskKey[Seq[String]]
+```
+
+Options for the Scala compiler.
+
+<ParamField path="scalacOptions" type="TaskKey[Seq[String]]">
+  Command-line flags passed to the Scala compiler (e.g., `-deprecation`, `-feature`).
+</ParamField>
+
+**Example:**
+```scala
+scalacOptions ++= Seq(
+  "-deprecation",
+  "-feature",
+  "-Xfatal-warnings"
+)
+```
+
+**Location:** `Keys.scala:209`
+
+### javacOptions
+
+```scala
+val javacOptions: TaskKey[Seq[String]]
+```
+
+Options for the Java compiler.
+
+<ParamField path="javacOptions" type="TaskKey[Seq[String]]">
+  Command-line flags passed to the Java compiler.
+</ParamField>
+
+**Example:**
+```scala
+javacOptions ++= Seq("-source", "11", "-target", "11")
+```
+
+**Location:** `Keys.scala:210`
+
+## Directory and Path Keys
+
+### baseDirectory
+
+```scala
+val baseDirectory: SettingKey[File]
+```
+
+The base directory. Depending on the scope, this is the base directory for the build, project, configuration, or task.
+
+<ParamField path="baseDirectory" type="SettingKey[File]" required>
+  Root directory of the project, typically where `build.sbt` is located.
+</ParamField>
+
+**Location:** `Keys.scala:147`
+
+### sourceDirectory
+
+```scala
+val sourceDirectory: SettingKey[File]
+```
+
+Default directory containing sources.
+
+<ParamField path="sourceDirectory" type="SettingKey[File]">
+  Defaults to `src` in the base directory.
+</ParamField>
+
+**Location:** `Keys.scala:154`
+
+### scalaSource
+
+```scala
+val scalaSource: SettingKey[File]
+```
+
+Default Scala source directory.
+
+<ParamField path="scalaSource" type="SettingKey[File]">
+  Defaults to `src/main/scala` for Compile configuration, `src/test/scala` for Test.
+</ParamField>
+
+**Location:** `Keys.scala:156`
+
+### target
+
+```scala
+val target: SettingKey[File]
+```
+
+Main directory for files generated by the build.
+
+<ParamField path="target" type="SettingKey[File]">
+  Output directory for compiled classes, packaged JARs, and other generated artifacts.
+</ParamField>
+
+**Location:** `Keys.scala:150`
+
+### classDirectory
+
+```scala
+val classDirectory: SettingKey[File]
+```
+
+Directory for compiled classes and copied resources.
+
+<ParamField path="classDirectory" type="SettingKey[File]">
+  Defaults to `target/scala-<version>/classes` for main sources.
+</ParamField>
+
+**Location:** `Keys.scala:189`
+
+## Package and Publish Keys
+
+### packageBin
+
+```scala
+val packageBin: TaskKey[HashedVirtualFileRef]
+```
+
+Produces a main artifact, such as a binary JAR.
+
+<ParamField path="packageBin" type="TaskKey[HashedVirtualFileRef]">
+  Creates the primary packaged artifact for the project.
+</ParamField>
+
+**Example:**
+```scala
+Compile / packageBin
+```
+
+**Location:** `Keys.scala:314`
+
+### publish
+
+```scala
+val publish: TaskKey[Unit]
+```
+
+Publishes artifacts to a repository.
+
+<ParamField path="publish" type="TaskKey[Unit]">
+  Uploads artifacts to the resolver specified by `publishTo`.
+</ParamField>
+
+**Location:** `Keys.scala:588`
+
+### publishLocal
+
+```scala
+val publishLocal: TaskKey[Unit]
+```
+
+Publishes artifacts to the local Ivy repository.
+
+<ParamField path="publishLocal" type="TaskKey[Unit]">
+  Installs artifacts in the local Ivy cache (`~/.ivy2/local`).
+</ParamField>
+
+**Location:** `Keys.scala:589`
+
+### publishTo
+
+```scala
+val publishTo: TaskKey[Option[Resolver]]
+```
+
+The resolver to publish to.
+
+<ParamField path="publishTo" type="TaskKey[Option[Resolver]]">
+  Specifies the repository where artifacts will be published.
+</ParamField>
+
+**Example:**
+```scala
+publishTo := Some("releases" at "https://repo.example.com/releases")
+```
+
+**Location:** `Keys.scala:639`
+
+## Test Keys
+
+### test
+
+```scala
+val test: InputKey[TestResult]
+```
+
+Executes the tests that either failed before, were not run, or whose transitive dependencies changed.
+
+<ParamField path="test" type="InputKey[TestResult]">
+  Runs tests incrementally based on changes.
+</ParamField>
+
+**Location:** `Keys.scala:378`
+
+### testOnly
+
+```scala
+val testOnly: InputKey[TestResult]
+```
+
+Executes the tests provided as arguments or all tests if no arguments are provided.
+
+<ParamField path="testOnly" type="InputKey[TestResult]">
+  Selective test execution by test class name or pattern.
+</ParamField>
+
+**Example:**
+```scala
+testOnly com.example.MySpec
+```
+
+**Location:** `Keys.scala:380`
+
+### testFrameworks
+
+```scala
+val testFrameworks: SettingKey[Seq[TestFramework]]
+```
+
+Registered, although not necessarily present, test frameworks.
+
+<ParamField path="testFrameworks" type="SettingKey[Seq[TestFramework]]">
+  Test framework implementations (ScalaTest, specs2, JUnit, etc.).
+</ParamField>
+
+**Location:** `Keys.scala:386`
+
+## Run Keys
+
+### run
+
+```scala
+val run: InputKey[Unit | ClientJobParams]
+```
+
+Runs a main class, passing along arguments provided on the command line.
+
+<ParamField path="run" type="InputKey[Unit | ClientJobParams]">
+  Executes the application's main method.
+</ParamField>
+
+**Example:**
+```scala
+run
+run arg1 arg2
+```
+
+**Location:** `Keys.scala:337`
+
+### mainClass
+
+```scala
+val mainClass: TaskKey[Option[String]]
+```
+
+Defines the main class for packaging or running.
+
+<ParamField path="mainClass" type="TaskKey[Option[String]]">
+  Fully qualified name of the main class to execute.
+</ParamField>
+
+**Example:**
+```scala
+Compile / mainClass := Some("com.example.Main")
+```
+
+**Location:** `Keys.scala:336`
+
+### fork
+
+```scala
+val fork: SettingKey[Boolean]
+```
+
+If true, forks a new JVM when running. If false, runs in the same JVM as the build.
+
+<ParamField path="fork" type="SettingKey[Boolean]">
+  Controls process isolation for running applications and tests.
+</ParamField>
+
+**Location:** `Keys.scala:343`
+
+## Logging Keys
+
+### logLevel
+
+```scala
+val logLevel: SettingKey[Level.Value]
+```
+
+Controls the logging level.
+
+<ParamField path="logLevel" type="SettingKey[Level.Value]">
+  Values: `Level.Error`, `Level.Warn`, `Level.Info`, `Level.Debug`
+</ParamField>
+
+**Location:** `Keys.scala:56`
+
+## Clean Keys
+
+### clean
+
+```scala
+val clean: TaskKey[Unit]
+```
+
+Deletes files produced by the build, such as generated sources, compiled classes, and task caches.
+
+<ParamField path="clean" type="TaskKey[Unit]">
+  Removes all build artifacts and intermediate files.
+</ParamField>
+
+**Location:** `Keys.scala:258`
+
+## Additional Keys
+
+### description
+
+```scala
+val description: SettingKey[String]
+```
+
+Project description.
+
+<ParamField path="description" type="SettingKey[String]">
+  Human-readable description of the project.
+</ParamField>
+
+**Location:** `Keys.scala:404`
+
+### licenses
+
+```scala
+val licenses: SettingKey[Seq[License]]
+```
+
+Project licenses as (name, url) pairs.
+
+<ParamField path="licenses" type="SettingKey[Seq[License]]">
+  Open source or proprietary licenses for the project.
+</ParamField>
+
+**Example:**
+```scala
+licenses := Seq("Apache-2.0" -> url("https://www.apache.org/licenses/LICENSE-2.0.txt"))
+```
+
+**Location:** `Keys.scala:407`
+
+### homepage
+
+```scala
+val homepage: SettingKey[Option[URI]]
+```
+
+Project homepage.
+
+<ParamField path="homepage" type="SettingKey[Option[URI]]">
+  URL to the project website or repository.
+</ParamField>
+
+**Location:** `Keys.scala:405`
+
+## Key Operators
+
+Keys support various operators for setting and modifying values:
+
+- `:=` - Sets a value
+- `+=` - Appends a single value to a sequence
+- `++=` - Appends multiple values to a sequence
+- `--=` - Removes values from a sequence
+
+```scala
+// Setting a value
+name := "my-project"
+
+// Appending to a sequence
+libraryDependencies += "org.typelevel" %% "cats-core" % "2.10.0"
+
+// Appending multiple values
+scalacOptions ++= Seq("-deprecation", "-feature")
+```

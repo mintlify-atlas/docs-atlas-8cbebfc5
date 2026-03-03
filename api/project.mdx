@@ -1,0 +1,566 @@
+---
+title: "Project API"
+description: "Project definition and build structure API in sbt"
+---
+
+# Project API
+
+The `Project` object and related types (defined in `sbt.Project` and `sbt.ProjectExtra`) provide the API for defining projects, managing build structure, and navigating project references.
+
+## Project Definition
+
+### Project Constructor
+
+```scala
+def apply(id: String, base: File): Project
+```
+
+Creates a new project definition.
+
+<ParamField path="id" type="String" required>
+  Unique identifier for the project within the build
+</ParamField>
+
+<ParamField path="base" type="File" required>
+  Base directory for the project (typically a subdirectory of the build root)
+</ParamField>
+
+<ResponseField name="result" type="Project">
+  A new project that can be configured with settings, dependencies, and plugins
+</ResponseField>
+
+**Example:**
+```scala
+lazy val core = project
+  .in(file("core"))
+  .settings(
+    name := "my-core"
+  )
+```
+
+## Project Configuration Methods
+
+### settings
+
+```scala
+def settings(ss: Def.SettingsDefinition*): Project
+```
+
+Appends settings to the project.
+
+<ParamField path="ss" type="Def.SettingsDefinition*" required>
+  Variable number of setting definitions to add
+</ParamField>
+
+<ResponseField name="result" type="Project">
+  The project with additional settings
+</ResponseField>
+
+**Example:**
+```scala
+project
+  .settings(
+    name := "my-project",
+    version := "1.0.0",
+    scalaVersion := "3.3.1"
+  )
+```
+
+### dependsOn
+
+```scala
+def dependsOn(deps: ClasspathDep[ProjectReference]*): Project
+```
+
+Adds classpath dependencies on internal or external projects.
+
+<ParamField path="deps" type="ClasspathDep[ProjectReference]*" required>
+  Project references with optional configuration mapping
+</ParamField>
+
+<ResponseField name="result" type="Project">
+  The project with inter-project dependencies
+</ResponseField>
+
+**Example:**
+```scala
+lazy val app = project
+  .dependsOn(core)
+  .dependsOn(util % "compile->compile;test->test")
+```
+
+**Location:** Conceptual location in Project trait
+
+### aggregate
+
+```scala
+def aggregate(refs: ProjectReference*): Project
+```
+
+Adds projects to be aggregated.
+
+<ParamField path="refs" type="ProjectReference*" required>
+  Projects to aggregate (tasks will cascade to aggregated projects)
+</ParamField>
+
+<ResponseField name="result" type="Project">
+  The project that aggregates the specified projects
+</ResponseField>
+
+**Description:**
+When a user requests a task on this project, the task also runs in aggregated projects.
+
+**Example:**
+```scala
+lazy val root = (project in file("."))
+  .aggregate(core, util, app)
+```
+
+### configs
+
+```scala
+def configs(cs: Configuration*): Project
+```
+
+Adds configurations to the project.
+
+<ParamField path="cs" type="Configuration*" required>
+  Custom configurations to add
+</ParamField>
+
+<ResponseField name="result" type="Project">
+  The project with additional configurations
+</ResponseField>
+
+**Example:**
+```scala
+val IntegrationTest = config("it") extend Test
+
+project
+  .configs(IntegrationTest)
+  .settings(
+    inConfig(IntegrationTest)(Defaults.testSettings)
+  )
+```
+
+### overrideConfigs
+
+```scala
+def overrideConfigs(cs: Configuration*): Project
+```
+
+Adds or replaces configurations.
+
+<ParamField path="cs" type="Configuration*" required>
+  Configurations that will replace existing ones with the same name
+</ParamField>
+
+<ResponseField name="result" type="Project">
+  The project with updated configurations
+</ResponseField>
+
+**Location:** `ProjectExtra.scala:163`
+
+### enablePlugins
+
+```scala
+def enablePlugins(ns: Plugins*): Project
+```
+
+Enables AutoPlugins for the project.
+
+<ParamField path="ns" type="Plugins*" required>
+  AutoPlugin instances to enable
+</ParamField>
+
+<ResponseField name="result" type="Project">
+  The project with specified plugins enabled
+</ResponseField>
+
+**Example:**
+```scala
+project
+  .enablePlugins(ScalaJSPlugin)
+```
+
+### disablePlugins
+
+```scala
+def disablePlugins(ps: AutoPlugin*): Project
+```
+
+Disables AutoPlugins for the project.
+
+<ParamField path="ps" type="AutoPlugin*" required>
+  AutoPlugin instances to disable
+</ParamField>
+
+<ResponseField name="result" type="Project">
+  The project with specified plugins disabled
+</ResponseField>
+
+**Example:**
+```scala
+project
+  .disablePlugins(AssemblyPlugin)
+```
+
+## Build Structure
+
+### structure
+
+```scala
+def structure(state: State): BuildStructure
+```
+
+Extracts the build structure from state.
+
+<ParamField path="state" type="State" required>
+  Current build state
+</ParamField>
+
+<ResponseField name="result" type="BuildStructure">
+  Complete build structure including all projects, settings, and indexes
+</ResponseField>
+
+**Location:** `ProjectExtra.scala:270`
+
+### session
+
+```scala
+def session(state: State): SessionSettings
+```
+
+Extracts the session settings from state.
+
+<ParamField path="state" type="State" required>
+  Current build state
+</ParamField>
+
+<ResponseField name="result" type="SessionSettings">
+  Current session configuration including current project and session settings
+</ResponseField>
+
+**Location:** `ProjectExtra.scala:273`
+
+### extract
+
+```scala
+def extract(state: State): Extracted
+```
+
+Extracts build information from state.
+
+<ParamField path="state" type="State" required>
+  Current build state
+</ParamField>
+
+<ResponseField name="result" type="Extracted">
+  Extracted build data containing structure, session, and current reference
+</ResponseField>
+
+**Description:**
+Provides convenient access to the build structure, session settings, and current project.
+
+**Example:**
+```scala
+val extracted = Project.extract(state)
+val currentProject = extracted.currentRef
+val buildStruct = extracted.structure
+```
+
+**Location:** `ProjectExtra.scala:291`
+
+## Project References
+
+### ProjectRef
+
+```scala
+final class ProjectRef(val build: URI, val project: String) extends ProjectReference
+```
+
+References a specific project in a specific build.
+
+<ParamField path="build" type="URI" required>
+  URI of the build containing the project
+</ParamField>
+
+<ParamField path="project" type="String" required>
+  Project identifier within that build
+</ParamField>
+
+**Example:**
+```scala
+val coreRef = ProjectRef(file("../core").toURI, "core")
+```
+
+### LocalProject
+
+```scala
+final case class LocalProject(project: String) extends ProjectReference
+```
+
+References a project in the current build by ID.
+
+<ParamField path="project" type="String" required>
+  Project identifier in the current build
+</ParamField>
+
+**Example:**
+```scala
+lazy val app = project
+  .dependsOn(LocalProject("core"))
+```
+
+### RootProject
+
+```scala
+final case class RootProject(build: URI) extends ProjectReference
+```
+
+References the root project of a build.
+
+<ParamField path="build" type="URI" required>
+  URI of the build
+</ParamField>
+
+## Build Navigation
+
+### current
+
+```scala
+def current(state: State): ProjectRef
+```
+
+Gets the current project reference.
+
+<ParamField path="state" type="State" required>
+  Build state
+</ParamField>
+
+<ResponseField name="result" type="ProjectRef">
+  Reference to the currently selected project
+</ResponseField>
+
+**Location:** `ProjectExtra.scala:351`
+
+### getProject
+
+```scala
+def getProject(
+    ref: ProjectRef,
+    structure: BuildStructure
+): Option[ResolvedProject]
+```
+
+Retrieves a project definition.
+
+<ParamField path="ref" type="ProjectRef" required>
+  Project reference
+</ParamField>
+
+<ParamField path="structure" type="BuildStructure" required>
+  Build structure
+</ParamField>
+
+<ResponseField name="result" type="Option[ResolvedProject]">
+  The resolved project if it exists
+</ResponseField>
+
+**Location:** `ProjectExtra.scala:306`
+
+## Scope Helpers
+
+### inConfig
+
+```scala
+def inConfig(conf: Configuration)(ss: Seq[Setting[?]]): Seq[Setting[?]]
+```
+
+Scopes settings to a specific configuration.
+
+<ParamField path="conf" type="Configuration" required>
+  Configuration scope (Compile, Test, Runtime, etc.)
+</ParamField>
+
+<ParamField path="ss" type="Seq[Setting[?]]" required>
+  Settings to scope
+</ParamField>
+
+<ResponseField name="result" type="Seq[Setting[?]]">
+  Settings scoped to the configuration
+</ResponseField>
+
+**Example:**
+```scala
+lazy val root = project
+  .settings(
+    inConfig(Test)(
+      Seq(
+        fork := true,
+        javaOptions += "-Xmx2G"
+      )
+    )
+  )
+```
+
+**Location:** `ProjectExtra.scala:158`
+
+## Display and Debugging
+
+### showContextKey
+
+```scala
+def showContextKey(state: State): Show[ScopedKey[?]]
+```
+
+Creates a display formatter for scoped keys.
+
+<ParamField path="state" type="State" required>
+  Current state
+</ParamField>
+
+<ResponseField name="result" type="Show[ScopedKey[?]]">
+  Formatter that shows keys relative to current context
+</ResponseField>
+
+**Location:** `ProjectExtra.scala:199`
+
+### details
+
+```scala
+def details(
+    structure: BuildStructure,
+    actual: Boolean,
+    key: ScopedKey[?]
+)(using display: Show[ScopedKey[?]]): String
+```
+
+Generates detailed information about a key.
+
+<ParamField path="structure" type="BuildStructure" required>
+  Build structure
+</ParamField>
+
+<ParamField path="actual" type="Boolean" required>
+  Show actual or declared dependencies
+</ParamField>
+
+<ParamField path="key" type="ScopedKey[?]" required>
+  Key to inspect
+</ParamField>
+
+<ResponseField name="result" type="String">
+  Formatted details including description, dependencies, and delegates
+</ResponseField>
+
+**Location:** `ProjectExtra.scala:434`
+
+## Classpath Dependencies
+
+### ClasspathDependency
+
+```scala
+final case class ClasspathDependency(
+    project: ProjectReference,
+    configuration: Option[String]
+) extends ClasspathDep[ProjectReference]
+```
+
+Represents a classpath dependency with configuration mapping.
+
+<ParamField path="project" type="ProjectReference" required>
+  Referenced project
+</ParamField>
+
+<ParamField path="configuration" type="Option[String]">
+  Configuration mapping (e.g., "compile->compile;test->test")
+</ParamField>
+
+**Example:**
+```scala
+// Simple dependency (defaults to compile->compile)
+project.dependsOn(core)
+
+// With configuration mapping
+project.dependsOn(core % "compile->compile;test->test")
+
+// Test-only dependency  
+project.dependsOn(testUtils % "test->compile")
+```
+
+### % Operator
+
+```scala
+extension (p: ProjectReference)
+  def %(conf: Configuration): ClasspathDependency
+  def %(conf: String): ClasspathDependency
+```
+
+Creates a classpath dependency with configuration mapping.
+
+<ParamField path="p" type="ProjectReference" required>
+  Project reference
+</ParamField>
+
+<ParamField path="conf" type="Configuration | String" required>
+  Configuration or configuration mapping string
+</ParamField>
+
+<ResponseField name="result" type="ClasspathDependency">
+  Configured classpath dependency
+</ResponseField>
+
+**Example:**
+```scala
+core % Test
+core % "test->compile"
+```
+
+**Location:** `ProjectExtra.scala:689`
+
+## Full Example
+
+```scala
+import sbt._
+import sbt.Keys._
+
+lazy val commonSettings = Seq(
+  organization := "com.example",
+  version := "1.0.0",
+  scalaVersion := "3.3.1"
+)
+
+lazy val core = (project in file("core"))
+  .settings(
+    commonSettings,
+    name := "my-core",
+    libraryDependencies ++= Seq(
+      "org.typelevel" %% "cats-core" % "2.10.0"
+    )
+  )
+
+lazy val util = (project in file("util"))
+  .settings(
+    commonSettings,
+    name := "my-util"
+  )
+  .dependsOn(core)
+
+lazy val app = (project in file("app"))
+  .settings(
+    commonSettings,
+    name := "my-app"
+  )
+  .dependsOn(
+    core % "compile->compile",
+    util % "compile->compile;test->test"
+  )
+
+lazy val root = (project in file("."))
+  .settings(
+    commonSettings,
+    name := "my-project"
+  )
+  .aggregate(core, util, app)
+```

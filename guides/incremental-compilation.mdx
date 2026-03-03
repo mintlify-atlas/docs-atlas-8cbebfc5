@@ -1,0 +1,429 @@
+---
+title: Incremental Compilation
+description: Understand how sbt's incremental compiler Zinc works and how to optimize compilation
+---
+
+This guide explains sbt's incremental compilation system powered by Zinc, the incremental Scala compiler.
+
+## What is Zinc?
+
+Zinc is the incremental compiler for Scala. It analyzes source code dependencies and only recompiles the minimal set of files affected by changes, dramatically speeding up compilation times.
+
+<Note>
+Zinc is built into sbt and works automatically - no special configuration needed.
+</Note>
+
+## How Incremental Compilation Works
+
+Zinc tracks three types of dependencies:
+
+<Steps>
+  <Step title="Source dependencies">
+    When file A uses a definition from file B, A depends on B.
+  </Step>
+  
+  <Step title="Binary dependencies">
+    When source files use external libraries from JARs.
+  </Step>
+  
+  <Step title="Product dependencies">
+    The compiled class files that need to be updated.
+  </Step>
+</Steps>
+
+### Compilation Process
+
+1. **Analysis** - Zinc analyzes source files to detect dependencies
+2. **Change detection** - Detects which files have changed since last compilation  
+3. **Invalidation** - Determines which files must be recompiled
+4. **Compilation** - Compiles only the affected files
+5. **Analysis storage** - Saves dependency information for next compilation
+
+## Compilation Analysis
+
+Zinc stores analysis data about each compilation:
+
+```scala build.sbt
+// Analysis file location (default)
+compileAnalysisFile := target.value / "streams" / "compile" / "compileIncremental" / "_global" / "out"
+
+// Analysis file target root
+compileAnalysisTargetRoot := target.value / "zinc"
+```
+
+The analysis file contains:
+- Source file dependencies
+- API signatures
+- Class file mappings
+- Compilation timestamps
+
+<Tip>
+Don't modify analysis files manually - they're managed by Zinc.
+</Tip>
+
+## Incremental Compiler Options
+
+Configure Zinc behavior using `incOptions`:
+
+```scala build.sbt
+incOptions := incOptions.value.withSettings(
+  Seq(
+    // Increase recompilation steps
+    incOptions.value.recompileAllFraction() -> 0.5,
+    
+    // API debug logging
+    incOptions.value.apiDumpDirectory() -> Some(target.value / "api-dumps")
+  )
+)
+```
+
+### Key Inc Options
+
+<CodeGroup>
+```scala Recompilation Control
+incOptions := incOptions.value
+  .withRecompileAllFraction(0.5)  // Recompile all if >50% changed
+  .withRecompileOnMacroDefChange("dynamic")  // Macro changes
+```
+
+```scala Class File Management
+incOptions := incOptions.value
+  .withClassfileManagerType(
+    Some(TransactionalManagerType.default)  // Rollback on failure
+  )
+```
+
+```scala External Hooks
+incOptions := incOptions.value
+  .withExternalHooks(
+    new ExternalHooks {
+      // Custom compilation hooks
+    }
+  )
+```
+</CodeGroup>
+
+## Understanding Recompilation
+
+Zinc recompiles files when:
+
+1. **Direct changes** - The source file itself was modified
+2. **API changes** - A file's public API that other files depend on changed
+3. **Inheritance changes** - A parent class/trait was modified
+4. **Macro changes** - Macro definitions changed
+5. **Signature changes** - Type signatures changed
+
+### Name Hashing
+
+Zinc uses name hashing to minimize recompilation:
+
+```scala
+// File A.scala
+class A {
+  def method1(): Int = 42
+  def method2(): String = "hello"  // Adding this won't recompile users of method1
+}
+```
+
+Zinc tracks which names (methods, fields) are used, not just file-level dependencies.
+
+<Note>
+Name hashing means that adding a new method to a class won't trigger recompilation of code that doesn't use it.
+</Note>
+
+## Compilation Performance
+
+### Viewing Compilation Statistics
+
+Enable timing information:
+
+```scala build.sbt
+showTiming := true
+showSuccess := true
+```
+
+Or at runtime:
+
+```bash
+sbt -Dsbt.task.timings=true compile
+```
+
+### Compilation Listeners
+
+Monitor incremental compilation decisions:
+
+```scala build.sbt
+import xsbti.compile.RunProfiler
+
+zincCompilationListeners += new RunProfiler {
+  override def timeCompilation(run: => Analysis): Analysis = {
+    val start = System.currentTimeMillis()
+    val result = run
+    val elapsed = System.currentTimeMillis() - start
+    println(s"Compilation took $elapsed ms")
+    result
+  }
+}
+```
+
+## Optimizing Incremental Compilation
+
+<Steps>
+  <Step title="Minimize API changes">
+    Changes to public APIs cause more recompilation. Use private/protected when possible.
+    
+    ```scala
+    // Prefer private
+    private def helper(): Int = 42
+    
+    // Over public
+    def helper(): Int = 42  // Will trigger recompilation of dependents
+    ```
+  </Step>
+  
+  <Step title="Separate API from implementation">
+    Put stable APIs in separate files from frequently-changing implementations.
+  </Step>
+  
+  <Step title="Use stable type signatures">
+    Avoid type inference in public APIs:
+    
+    ```scala
+    // Explicit type (stable)
+    def compute(): Int = complexCalculation()
+    
+    // Inferred type (may change)
+    def compute() = complexCalculation()  // Return type might change
+    ```
+  </Step>
+  
+  <Step title="Modularize your code">
+    Split large files into smaller, focused modules to reduce recompilation scope.
+  </Step>
+</Steps>
+
+## Compilation Phases
+
+Zinc integrates with the Scala compiler phases:
+
+```scala build.sbt
+// Control compilation order
+compileOrder := CompileOrder.Mixed  // Default
+// Options: JavaThenScala, ScalaThenJava, Mixed
+```
+
+### Compile Order Strategies
+
+| Order | Description | Use When |
+|-------|-------------|----------|
+| `Mixed` | Compiles Scala and Java together | Default, most flexible |
+| `JavaThenScala` | Java first, then Scala | Scala depends on Java |
+| `ScalaThenJava` | Scala first, then Java | Java depends on Scala |
+
+## Compiler Bridge
+
+Zinc uses a compiler bridge for each Scala version:
+
+```scala build.sbt
+// Compiler bridge source (auto-configured)
+scalaCompilerBridgeSource := {
+  val scalaV = scalaVersion.value
+  if (scalaV.startsWith("3."))
+    ("org.scala-lang" % "scala3-sbt-bridge" % scalaV)
+  else
+    ("org.scala-lang" % "scala2-sbt-bridge" % scalaV)
+}
+```
+
+<Note>
+sbt automatically downloads and compiles the appropriate compiler bridge for your Scala version.
+</Note>
+
+## Compiler Cache
+
+Zinc caches Scala compiler instances:
+
+```scala build.sbt
+// Compiler cache is stored in State
+compilerCache := state.value
+  .get(Keys.stateCompilerCache)
+  .getOrElse(CompilerCache.fresh)
+```
+
+The cache improves startup time for repeated compilations.
+
+## Analysis File Management
+
+### Clearing Analysis
+
+Force a clean recompilation:
+
+```bash
+# Clean compiled files and analysis
+sbt clean
+
+# Clean specific configuration
+sbt Test/clean
+```
+
+### Analysis Compatibility
+
+Analysis files are version-specific:
+- Incompatible between Zinc versions
+- Incompatible between Scala versions
+- Should be regenerated when upgrading
+
+<Warning>
+If you upgrade Scala or sbt versions, run `sbt clean` to remove old analysis files.
+</Warning>
+
+## Debugging Compilation Issues
+
+### Verbose Compilation
+
+Enable detailed logging:
+
+```bash
+# Verbose output
+sbt "set incOptions := incOptions.value.withApiDebug(true)" compile
+
+# Show what gets recompiled
+sbt "set logLevel := Level.Debug" compile
+```
+
+### Analysis Dumps
+
+Dump API information:
+
+```scala build.sbt
+incOptions := incOptions.value.withSettings(
+  Seq(
+    incOptions.value.apiDumpDirectory() -> Some(target.value / "api-dumps")
+  )
+)
+```
+
+## Pipelined Compilation
+
+For multi-project builds, enable pipelining:
+
+```scala build.sbt
+// Enable pipelining in subprojects
+ThisBuild / usePipelining := true
+
+// Export early output for downstream projects
+exportPipelining := true
+```
+
+Pipelining allows dependent projects to start compiling before upstream projects finish.
+
+<Tip>
+Pipelining is especially beneficial for large multi-project builds.
+</Tip>
+
+## External Class File Management
+
+Control how class files are managed:
+
+```scala build.sbt
+incOptions := incOptions.value.withClassfileManagerType(
+  Some(TransactionalManagerType.default)
+)
+```
+
+Transactional management:
+- Backup class files before compilation
+- Restore on compilation failure
+- Ensures consistent state
+
+## Stamp Management
+
+Zinc uses stamps to detect changes:
+
+```scala build.sbt
+// Use hash-based stamping (default)
+inputFileStamper := sbt.nio.FileStamper.Hash
+
+// Use timestamp-based stamping
+inputFileStamper := sbt.nio.FileStamper.LastModified
+```
+
+| Stamper | Pros | Cons |
+|---------|------|------|
+| `Hash` | Accurate, detects content changes | Slower for large files |
+| `LastModified` | Fast | May miss changes if timestamp unchanged |
+
+## Compilation Reporting
+
+Customize compilation progress reporting:
+
+```scala build.sbt
+compileProgress := new CompileProgress {
+  override def startUnit(phase: String, unitPath: String): Unit = {
+    println(s"Compiling $unitPath in phase $phase")
+  }
+  
+  override def advance(current: Int, total: Int): Boolean = {
+    println(s"Progress: $current / $total")
+    true  // Continue compilation
+  }
+}
+```
+
+## Best Practices
+
+<Steps>
+  <Step title="Keep API changes minimal">
+    Minimize changes to public APIs to reduce recompilation cascades.
+  </Step>
+  
+  <Step title="Use explicit types in APIs">
+    Declare return types explicitly in public methods to avoid API changes from type inference.
+  </Step>
+  
+  <Step title="Clean when needed">
+    Run `sbt clean` after upgrading Scala or sbt versions.
+  </Step>
+  
+  <Step title="Leverage pipelining">
+    Enable `usePipelining` for multi-project builds to improve compilation times.
+  </Step>
+  
+  <Step title="Monitor compilation">
+    Use `-Dsbt.task.timings=true` to identify compilation bottlenecks.
+  </Step>
+  
+  <Step title="Organize code wisely">
+    Separate stable APIs from changing implementations to minimize recompilation.
+  </Step>
+</Steps>
+
+## Troubleshooting
+
+### Problem: Too much recompilation
+
+**Solution:** Check what changed:
+```bash
+sbt "set logLevel := Level.Debug" compile
+```
+
+### Problem: Compilation errors after upgrade
+
+**Solution:** Clean and rebuild:
+```bash
+sbt clean compile
+```
+
+### Problem: Slow incremental compilation
+
+**Solution:** Check if too many files are recompiling:
+```scala build.sbt
+incOptions := incOptions.value.withRecompileAllFraction(0.8)
+```
+
+### Problem: Out of memory during compilation
+
+**Solution:** Increase heap size:
+```bash
+sbt -J-Xmx4G compile
+```

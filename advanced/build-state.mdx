@@ -1,0 +1,515 @@
+---
+title: Build State Management
+description: Understanding sbt's State and state transformation mechanisms
+---
+
+This guide explains sbt's `State` type and how it's used to manage build state, configuration, and command execution flow.
+
+## What is State?
+
+From `Main.scala:304`, `State` is the central data structure in sbt that represents the current build session:
+
+```scala
+val s = State(
+  configuration,
+  initialDefinitions,
+  Set.empty,
+  None,
+  commands,
+  State.newHistory,
+  initAttrs,
+  initialGlobalLogging(Option(logDir), initialLevel),
+  None,
+  State.Continue
+)
+```
+
+The `State` type contains:
+- **configuration**: Application configuration and base directory
+- **initialDefinitions**: Available commands
+- **commands**: Remaining commands to execute
+- **history**: Command execution history
+- **attributes**: Key-value store for arbitrary data
+- **globalLogging**: Logging configuration
+- **onFailure**: Error handling strategy
+
+## State as Command Flow
+
+Commands in sbt are functions from `State => State`. The main loop processes commands sequentially:
+
+```scala
+// From MainLoop.scala (conceptual)
+def runLogged(s: State): xsbti.MainResult = {
+  s.remainingCommands match {
+    case Nil => // No more commands, exit
+    case cmd :: rest =>
+      val newState = Command.process(cmd, s)
+      runLogged(newState)
+  }
+}
+```
+
+## AttributeMap
+
+The `State` uses an `AttributeMap` to store typed key-value pairs:
+
+```scala
+val myKey = AttributeKey[String]("my-key")
+
+// Set a value
+val newState = state.put(myKey, "hello")
+
+// Get a value
+val value: Option[String] = state.get(myKey)
+
+// Get with default
+val valueOrDefault: String = state.getSetting(myKey).getOrElse("default")
+```
+
+### Built-in Attribute Keys
+
+From various parts of the codebase:
+
+```scala
+// Build structure
+Keys.stateBuildStructure: AttributeKey[BuildStructure]
+
+// Command history
+Keys.history: AttributeKey[History]
+
+// Logging
+Keys.logManager: AttributeKey[LogManager]
+
+// Watches for continuous execution
+Keys.watch: AttributeKey[Watch]
+
+// Session settings
+Keys.sessionSettings: AttributeKey[SessionSettings]
+```
+
+## State Transformations
+
+### StateTransform
+
+From `StateTransform.scala`, tasks can transform state after execution:
+
+```scala
+/**
+ * Provides a mechanism for a task to transform the state based on 
+ * the result of the task.
+ */
+final class StateTransform private (
+  val transform: State => State,
+  stateProxy: () => State,
+) {}
+
+object StateTransform:
+  def apply(transform: State => State): StateTransform =
+    new StateTransform(
+      transform,
+      () => throw new IllegalStateException("No state was added...")
+    )
+```
+
+### Example Usage
+
+```scala
+val setFoo = taskKey[StateTransform]("Set foo attribute")
+
+val foo = AttributeKey[String]("foo")
+
+setFoo := {
+  state.value.get(foo) match {
+    case None => StateTransform(_.put(foo, "foo"))
+    case _ => StateTransform(identity)
+  }
+}
+```
+
+After running `setFoo`, the state is transformed to include the `foo` attribute.
+
+### How StateTransform Works
+
+From `EvaluateTask.scala:587`, state transforms are applied after task execution:
+
+```scala
+def stateTransform(results: RMap[TaskId, Result]): State => State =
+  Function.chain(
+    results.toTypedSeq flatMap {
+      case results.TPair(_, Result.Value(KeyValue(_, st: StateTransform))) => 
+        Some(st.transform)
+      case results.TPair(task: Task[?], Result.Value(v)) => 
+        task.post(v).get(transformState)
+      case _ => Nil
+    }
+  )
+```
+
+All state transforms from completed tasks are composed and applied to the state.
+
+## State in Commands
+
+### Defining Commands
+
+From `Command.scala:95`, commands are defined as:
+
+```scala
+def command(name: String, help: Help = Help.empty)(f: State => State): Command =
+  make(name, help)(state => success(() => f(state)))
+```
+
+Example command:
+
+```scala
+val myCommand = Command.command("hello") { state =>
+  state.log.info("Hello from custom command!")
+  state
+}
+```
+
+### Modifying Command Queue
+
+Commands can add more commands to execute:
+
+```scala
+val chainCommands = Command.command("chain") { state =>
+  val commands = Exec("compile", None) :: Exec("test", None) :: Nil
+  state.copy(remainingCommands = commands ::: state.remainingCommands)
+}
+```
+
+### Error Handling
+
+```scala
+val mayFail = Command.command("mayFail") { state =>
+  try {
+    // Risky operation
+    state
+  } catch {
+    case e: Exception =>
+      state.log.error(s"Command failed: ${e.getMessage}")
+      state.fail  // Mark state as failed
+  }
+}
+```
+
+From `Main.scala:1062`, failed commands can trigger recovery:
+
+```scala
+val s1 = state.copy(
+  onFailure = Some(Exec(Shell, None)),
+  remainingCommands = exec +: Exec(Shell, None) +: state.remainingCommands
+)
+```
+
+## State Lifecycle
+
+### Initialization
+
+From `Main.scala:280`, initial state is created:
+
+```scala
+def initialState(
+  configuration: xsbti.AppConfiguration,
+  initialDefinitions: Seq[Command],
+  preCommands: Seq[String]
+): State = {
+  val commands = (preCommands ++ userCommands).toList.map(x => Exec(x, None))
+  val baseAttrs = BuiltinCommands.initialAttributes
+  
+  val s = State(
+    configuration,
+    initialDefinitions,
+    Set.empty,
+    None,
+    commands,
+    State.newHistory,
+    initAttrs,
+    initialGlobalLogging(Option(logDir), initialLevel),
+    None,
+    State.Continue
+  )
+  s.initializeClassLoaderCache
+}
+```
+
+### Project Loading
+
+From `Main.scala:994`, loading a project updates state:
+
+```scala
+def doLoadProject(s0: State, action: LoadAction): State = {
+  val (s1, base) = Project.loadAction(SessionVar.clear(s0), action)
+  val (eval, structure) = Load.defaultLoad(s1, base, s1.log, ...)
+  val session = Load.initialSession(structure, eval, s0)
+  
+  val s3 = Project.setProject(
+    session,
+    structure,
+    s2,
+    st => setupGlobalFileTreeRepository(st)
+  )
+  s3
+}
+```
+
+This:
+1. Clears session variables
+2. Loads the build definition
+3. Creates a new session
+4. Updates state with loaded structure
+
+### State in Task Execution
+
+From `EvaluateTask.scala:472`, state is injected into tasks:
+
+```scala
+def nodeView(
+  state: State,
+  streams: Streams,
+  roots: Seq[ScopedKey[?]],
+  dummies: DummyTaskMap = DummyTaskMap(Nil)
+): NodeView =
+  Transform(
+    (dummyRoots, roots) :: 
+    (Def.dummyStreamsManager, streams) :: 
+    (dummyState, state) :: 
+    dummies
+  )
+```
+
+The state is available to tasks via `Def.stateKey`:
+
+```scala
+val myTask = taskKey[Unit]("Access state")
+
+myTask := {
+  val currentState = state.value
+  val attrs = currentState.attributes
+  // Work with state
+}
+```
+
+<Note>
+Tasks receive a snapshot of the state when they start. State modifications via `StateTransform` only take effect after all tasks complete.
+</Note>
+
+## Global Logging
+
+From `Main.scala:262`, global logging is part of state:
+
+```scala
+private def initialGlobalLogging(
+  file: Option[File], 
+  initialLevel: Level.Value
+): GlobalLogging =
+  GlobalLogging.initial(
+    MainAppender.globalDefault(ConsoleOut.globalProxy),
+    createTemp(),
+    ConsoleOut.globalProxy,
+    initialLevel
+  )
+```
+
+Access logging from state:
+
+```scala
+state.log.info("Message")
+state.log.debug("Debug info")
+state.globalLogging.full  // Full logger
+```
+
+## Session Management
+
+### SessionSettings
+
+Session settings are temporary settings added during an sbt session:
+
+```scala
+val session: SessionSettings = state.get(Keys.sessionSettings).get
+
+// Session contains:
+session.currentEval()  // Scala evaluator
+session.mergeSettings  // Settings to merge with build
+session.rawAppend      // Raw settings to append
+```
+
+### Modifying Session
+
+From `Main.scala:623`:
+
+```scala
+def reapply(newSession: SessionSettings, structure: BuildStructure, s: State): State = {
+  s.log.info("Reapplying settings...")
+  val loggerInject = LogManager.settingsLogger(s)
+  val withLogger = newSession.appendRaw(loggerInject :: Nil)
+  val show = Project.showContextKey2(newSession)
+  val newStructure = Load.reapply(withLogger.mergeSettings, structure)(using show)
+  Project.setProject(newSession, newStructure, s)
+}
+```
+
+## State Utility Methods
+
+### Common Operations
+
+```scala
+// Copy state with modifications
+val newState = state.copy(
+  remainingCommands = newCommands,
+  onFailure = Some(failureHandler)
+)
+
+// Mark as failed
+val failed = state.fail
+
+// Mark as successful and exit
+val exiting = state.exit(ok = true)
+
+// Clear global log
+val cleared = state.clearGlobalLog
+
+// Set interactive mode
+val interactive = state.setInteractive(true)
+```
+
+### History Access
+
+```scala
+val history = state.history
+val previous = history.previous  // Previous command
+val all = history.executed       // All executed commands
+```
+
+## Background Jobs
+
+State can store background job services:
+
+```scala
+val bgService = state.getSetting(Global / Keys.bgJobService)
+bgService.foreach { service =>
+  val handle = service.runInBackground(
+    state,
+    () => { /* background work */ }
+  )
+}
+```
+
+## Advanced Patterns
+
+### State-Dependent Task
+
+```scala
+val stateTask = taskKey[String]("Task that uses state")
+
+stateTask := {
+  val s = state.value
+  val customAttr = s.get(myCustomKey).getOrElse("default")
+  s"Using state value: $customAttr"
+}
+```
+
+### Command with State Modification
+
+```scala
+val customKey = AttributeKey[Int]("custom-counter")
+
+val incrementCommand = Command.command("increment") { state =>
+  val current = state.get(customKey).getOrElse(0)
+  val newState = state.put(customKey, current + 1)
+  newState.log.info(s"Counter: ${current + 1}")
+  newState
+}
+```
+
+### Chaining State Transforms
+
+```scala
+val transform1 = StateTransform(_.put(key1, "value1"))
+val transform2 = StateTransform(s => s.put(key2, s.get(key1).getOrElse("") + "suffix"))
+
+// Transforms are applied in sequence after task execution
+```
+
+## State Inspection
+
+From `Main.scala:421`, the `about` command shows state info:
+
+```scala
+def aboutProject(s: State): String =
+  if (Project.isProjectLoaded(s)) {
+    val e = Project.extract(s)
+    val version = e.getOpt(Keys.version) match { 
+      case None => ""; case Some(v) => " " + v 
+    }
+    val current = "The current project is " + Reference.display(e.currentRef) + version
+    current + aboutScala(s, e) + aboutPlugins(e)
+  } else "No project is currently loaded"
+```
+
+## Best Practices
+
+1. **Use Typed Keys**: Always use `AttributeKey[T]` for type safety
+2. **Minimize State Mutation**: Prefer returning new state over mutation
+3. **Document Custom Keys**: Add descriptions to help debugging
+4. **Handle Missing Values**: Use `.getOrElse` or pattern matching on `Option`
+5. **Avoid State in Pure Tasks**: Keep tasks pure when possible; use state only when necessary
+
+<Warning>
+State modifications in tasks via `StateTransform` are batched and applied after all tasks complete. They don't affect running tasks.
+</Warning>
+
+## Complete Example
+
+```scala
+import sbt._
+import sbt.Keys._
+
+object StateExample extends AutoPlugin {
+  object autoImport {
+    val deploymentEnv = AttributeKey[String]("deployment-env", 
+      "Current deployment environment")
+    val setEnv = inputKey[StateTransform]("Set deployment environment")
+    val showEnv = taskKey[Unit]("Show current environment")
+  }
+  
+  import autoImport._
+  
+  override lazy val projectSettings = Seq(
+    setEnv := {
+      val env = spaceDelimited("<env>").parsed.headOption
+        .getOrElse(sys.error("Environment required"))
+      
+      StateTransform { s =>
+        s.log.info(s"Setting environment to: $env")
+        s.put(deploymentEnv, env)
+      }
+    },
+    
+    showEnv := {
+      val s = state.value
+      val env = s.get(deploymentEnv).getOrElse("not set")
+      s.log.info(s"Current environment: $env")
+    }
+  )
+  
+  override lazy val buildSettings = Seq(
+    commands += Command.command("deploy") { state =>
+      val env = state.get(deploymentEnv).getOrElse {
+        state.log.error("No environment set. Run 'setEnv <env>' first.")
+        return state.fail
+      }
+      
+      state.log.info(s"Deploying to $env...")
+      // Deployment logic
+      state
+    }
+  )
+}
+```
+
+## See Also
+
+- [Task Graph and Execution](/advanced/task-graph)
+- [Custom Settings and Tasks](/advanced/custom-settings)
+- [Command Definition](/advanced/commands)

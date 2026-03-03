@@ -1,0 +1,480 @@
+---
+title: "Contributing to sbt"
+description: "Guidelines, requirements, and best practices for contributing to sbt development"
+---
+
+Contributions are welcome and greatly appreciated! There are many ways to contribute to the sbt ecosystem depending on your interests and skill level.
+
+## Ways to Contribute
+
+<CardGroup cols={2}>
+  <Card title="Help Users" icon="handshake">
+    - Answer questions on [Stack Overflow](https://stackoverflow.com/questions/tagged/sbt)
+    - Help on [Scala Discord](https://discord.com/invite/scala)
+    - Fix build problems at work or online
+  </Card>
+  
+  <Card title="Documentation" icon="book">
+    - Fix documentation errors
+    - Add examples and clarifications
+    - Visit [sbt/website](https://github.com/sbt/website)
+  </Card>
+  
+  <Card title="Code" icon="code">
+    - Patch the core
+    - Create plugins
+    - Review pull requests
+  </Card>
+  
+  <Card title="Ecosystem" icon="puzzle-piece">
+    - Create plugins extending sbt
+    - Migrate builds to sbt 2.x
+    - Garden the issue tracker
+    - Report issues
+  </Card>
+</CardGroup>
+
+## Ideas and Proposals
+
+For enhancement ideas or general discussions:
+
+- Follow the [sbt 2.0 RFC process](https://eed3si9n.com/sbt-2.0-rfc-process)
+- Start a [GitHub Discussion](https://github.com/sbt/sbt/discussions)
+
+<Note>
+  Large changes should be discussed before implementation to ensure alignment with project goals and avoid wasted effort.
+</Note>
+
+## Pull Request Requirements
+
+<Warning>
+  **CRITICAL**: Pull requests must be tested with GitHub Actions or human-in-the-loop validation before submission.
+</Warning>
+
+### Before Working on a PR
+
+<Steps>
+  <Step title="Confirm the issue is valid">
+    Before working on a pull request, confirm with a Maintainer that a contribution is wanted for the issue.
+  </Step>
+
+  <Step title="Reproduce the problem">
+    Confirm that **you can reproduce the reported problem** using GitHub Actions or your computer.
+    
+    Given the wide user base and long history, not all reported issues are valid or relevant.
+  </Step>
+
+  <Step title="Verify your fix works">
+    After making code changes, confirm that **your change compiles and has fixed the problem**.
+  </Step>
+</Steps>
+
+<Warning>
+  sbt receives a high volume of pull request attempts with varying quality. Maintainers may close PRs that fail CI in a few rounds due to limited bandwidth. We cannot play the QA role.
+</Warning>
+
+## AI-Assisted Contributions
+
+AI tools can help create pull requests, but strict rules apply:
+
+### Requirements
+
+<AccordionGroup>
+  <Accordion title="Human Verification (REQUIRED)" icon="user-check">
+    **All AI-generated code must be fully verified with human-in-the-loop.**
+    
+    - Actually run sbt to test your changes
+    - Understand every line of generated code
+    - Do not blindly trust AI output
+    - Final responsibility lies with you
+  </Accordion>
+
+  <Accordion title="Disclosure (REQUIRED)" icon="message-exclamation">
+    **All AI usage in any form must be disclosed.**
+    
+    State in your PR description that you used AI tools. Include a "Generated-by" tag in your commit message:
+    
+    ```
+    Generated-by: Claude Sonnet 4.5
+    ```
+    
+    or
+    
+    ```
+    Generated-by: GitHub Copilot
+    ```
+  </Accordion>
+
+  <Accordion title="License Compliance" icon="certificate">
+    - No third-party materials in output, OR
+    - Included materials comply with Apache License-compatible open source licenses
+  </Accordion>
+
+  <Accordion title="Code Understanding" icon="brain">
+    Review and understand all AI-generated code before including it.
+    
+    Blindly copy-pasting introduces security and stability risks.
+  </Accordion>
+</AccordionGroup>
+
+<Warning>
+  **Enforcement**: Maintainers will close PRs and block users who submit untested, unexplainable, AI copy-pasted work.
+  
+  Until people get better at using AI or AI gets better at producing reliable work, strict rules protect the project and maintainers.
+</Warning>
+
+## Getting Started
+
+<Steps>
+  <Step title="Fork the repository">
+    Create a [fork](https://docs.github.com/en/github/getting-started-with-github/fork-a-repo) of the sbt repository.
+  </Step>
+
+  <Step title="Enable workflows">
+    Go to the Actions tab in your fork and enable workflows.
+    
+    **This lets you run CI tests on your forked repository.**
+  </Step>
+
+  <Step title="Clone your fork">
+    [Clone](https://docs.github.com/en/github/creating-cloning-and-archiving-repositories/cloning-a-repository) the forked repository to create a local copy.
+  </Step>
+</Steps>
+
+## Branch to Work Against
+
+sbt uses two branches for development:
+
+| Branch | Purpose |
+|--------|----------|
+| **develop** | Development branch for sbt 2.x (next major series) |
+| **1.x.x** | Stable branch for current sbt 1.x releases (e.g., `1.12.x`) |
+
+Use:
+- **develop** for new features and bug fixes targeting sbt 2.x
+- **stable branch** for backports to sbt 1.x
+
+<Note>
+  The default branch set on GitHub should be used for bug fixes. For backports, use the latest stable branch.
+</Note>
+
+## Pull Request Guidelines
+
+Before submitting a PR, verify it meets these requirements:
+
+### Testing
+
+<AccordionGroup>
+  <Accordion title="Confirm problem reproduction" icon="bug">
+    Reproduce the problem prior to making code changes.
+  </Accordion>
+
+  <Accordion title="Include tests" icon="flask">
+    Add tests to your pull request:
+    - Scripted tests (for integration)
+    - Unit tests (for isolated logic)
+    - Screenshots from manual testing (if applicable)
+    
+    See:
+    - [Unit tests](https://github.com/sbt/sbt/blob/develop/contributing-docs/04_unit_tests.md)
+    - [Scripted tests](https://github.com/sbt/sbt/blob/develop/contributing-docs/05_scripted_tests.md)
+    - [Manual tests](https://github.com/sbt/sbt/blob/develop/contributing-docs/06_manual_tests.md)
+  </Accordion>
+</AccordionGroup>
+
+### Code Quality
+
+<AccordionGroup>
+  <Accordion title="Follow commit message guidelines" icon="message">
+    See [Commit Message Guideline](#commit-message-guideline) below.
+  </Accordion>
+
+  <Accordion title="Follow coding style" icon="code">
+    Follow the project's [Coding style and best practices](https://github.com/sbt/sbt/blob/develop/contributing-docs/03_coding_style.md).
+    
+    Run scalafmt:
+    ```bash
+    sbt scalafmtAll
+    ```
+  </Accordion>
+
+  <Accordion title="Sign the CLA" icon="pen-to-square">
+    Sign the [Scala Contributor License Agreement](https://contribute.akka.io/contribute/cla/scala).
+  </Accordion>
+
+  <Accordion title="Apache header on new files" icon="file-lines">
+    Add Apache headers to all new files:
+    
+    ```bash
+    sbt headerCreate
+    ```
+  </Accordion>
+</AccordionGroup>
+
+### PR Scope
+
+<Warning>
+  Keep PRs **small and focused on one change only**.
+  
+  - Avoid unrelated changes
+  - Don't mix features with refactoring
+  - Smaller PRs are easier to review and cherry-pick
+</Warning>
+
+### CI and Compatibility
+
+<AccordionGroup>
+  <Accordion title="Pass all CI tests" icon="circle-check">
+    Maintainers will not merge PRs that:
+    - Fail CI tests (without good justification)
+    - Regress linting
+    
+    Ensure tests pass before requesting review.
+  </Accordion>
+
+  <Accordion title="Maintain binary compatibility" icon="link">
+    Maintainers will not merge PRs that break binary compatibility ("bincompat").
+    
+    Run from sbt shell:
+    ```bash
+    mimaReportBinaryIssues
+    ```
+    
+    sbt MUST maintain backward binary compatibility across minor releases.
+  </Accordion>
+
+  <Accordion title="JDK version support" icon="coffee">
+    Test with the oldest supported JDK version (currently JDK 17).
+    
+    You can use any supported JDK version to run tests, but verify compatibility with JDK 17.
+  </Accordion>
+</AccordionGroup>
+
+### Merging
+
+<Note>
+  Maintainers may use **Squash and Merge**, combining your PR into one commit regardless of commit count.
+  
+  During review, you can keep a commit history for easier tracking.
+</Note>
+
+## Commit Message Guideline
+
+Follow this template:
+
+```
+[2.x] fix: Fix consoleProject not starting
+
+**Problem**
+consoleProject doesn't work. REPL doesn't even start.
+
+**Solution**
+I made some progress into consoleProject.
+At least Scala 3.7 REPL session will now start.
+
+Generated-by: Claude Sonnet 4.5
+```
+
+### Format Rules
+
+1. **(Optional)** Subject should start with `[2.x]` for develop branch or `[1.x]` for sbt 1.x
+
+2. **Type prefix**: Subject should start with:
+   - `fix` - Bug fix
+   - `feat` - New feature
+   - `refactor` - Code refactoring
+   - `test` - Test changes
+   - `ci` - CI/CD changes
+   - `deps` - Dependency updates
+
+3. **Imperative mood**: Use "Fix foo", "Add bar" (not "Fixed" or "Adds")
+
+4. **Problem section**: Summarize current understanding of the issue
+
+5. **Solution section**: Summarize your approach to fixing it
+
+6. **No at-mentions**: Do not at-mention people in commit messages
+
+7. **Generated-by tag**: Include for Gen-AI tools
+
+## Building sbt Locally
+
+### Build just sbt
+
+For changes contained only in sbt/sbt (not submodules):
+
+```bash
+sbt
+> publishLocalBin
+```
+
+This publishes sbt to your local machine for testing.
+
+See also:
+- [Development environment](https://github.com/sbt/sbt/blob/develop/contributing-docs/02_development_environment.md)
+- [Coding style and best practices](https://github.com/sbt/sbt/blob/develop/contributing-docs/03_coding_style.md)
+
+### Build sbtn (native client)
+
+```bash
+sbt nativeImage
+```
+
+On macOS for ARM64:
+
+```bash
+ARCHS=arm64 sbt nativeImage
+```
+
+## Testing
+
+sbt uses multiple testing methodologies:
+
+<AccordionGroup>
+  <Accordion title="Unit Tests" icon="vial">
+    Test isolated functionality using Hedgehog or other test frameworks.
+    
+    ```bash
+    sbt test
+    ```
+    
+    See [Unit tests documentation](https://github.com/sbt/sbt/blob/develop/contributing-docs/04_unit_tests.md).
+  </Accordion>
+
+  <Accordion title="Scripted Tests" icon="scroll">
+    Integration tests for build scenarios.
+    
+    ```bash
+    sbt scripted
+    ```
+    
+    See [Scripted tests documentation](https://github.com/sbt/sbt/blob/develop/contributing-docs/05_scripted_tests.md).
+  </Accordion>
+
+  <Accordion title="Manual Tests" icon="hand">
+    Test using locally built sbt on real projects.
+    
+    See [Manual tests documentation](https://github.com/sbt/sbt/blob/develop/contributing-docs/06_manual_tests.md).
+  </Accordion>
+</AccordionGroup>
+
+<Note>
+  **Always add tests**. For small-scope changes, prefer Hedgehog. For changes requiring file coordination and tasks, use scripted tests.
+</Note>
+
+## Tech Stack
+
+sbt uses specialized libraries and tooling:
+
+- **Contraband** - Type-safe data definitions
+- **Coursier** - Dependency management (since sbt 1.3)
+- **sjson-new** - JSON serialization
+- **Gigahorse** - HTTP client
+- **Zinc** - Incremental Scala compilation
+
+See [Tech stack documentation](https://github.com/sbt/sbt/blob/develop/contributing-docs/07_tech_stack.md).
+
+## Reporting Issues
+
+Open a GitHub issue when you're 90% sure it's an actual bug.
+
+### Preliminaries
+
+<Steps>
+  <Step title="Update sbt">
+    Make sure your sbt version is up to date.
+  </Step>
+
+  <Step title="Search existing issues">
+    Search [Stack Overflow](https://stackoverflow.com/tags/sbt) and [GitHub Issues](https://github.com/sbt/sbt/issues) to see if your bug was already reported.
+  </Step>
+
+  <Step title="One issue per problem">
+    Open one case for each problem. Don't combine multiple issues.
+  </Step>
+</Steps>
+
+### What to Report
+
+Developers need three things: **steps**, **problems**, and **expectations**.
+
+<AccordionGroup>
+  <Accordion title="Steps (Most Important)" icon="shoe-prints">
+    **Exact steps to reproduce the problem on our computers.**
+    
+    Provide:
+    - Method of running sbt
+    - `build.sbt` that caused the problem
+    - sbt and Scala versions
+    - Sample Scala code (for incremental compilation issues)
+    - Minimized reproduction (reduce non-essential factors)
+    
+    <Warning>
+      If we cannot reproduce the problem, it cannot be fixed. Error messages alone are insufficient.
+    </Warning>
+  </Accordion>
+
+  <Accordion title="Problems" icon="triangle-exclamation">
+    Describe what you think is the problem.
+    
+    - Include stack traces for compilation errors
+    - Provide raw information (more is better)
+    - What might be "obvious" to you may be intentional behavior
+  </Accordion>
+
+  <Accordion title="Expectations" icon="bullseye">
+    Describe what you think should have happened.
+  </Accordion>
+
+  <Accordion title="Notes (Optional)" icon="note-sticky">
+    Add analysis, context, or additional observations.
+  </Accordion>
+</AccordionGroup>
+
+### Subject
+
+A descriptive subject is better but don't worry too much:
+
+- Good: "StackOverflowError while name hashing is enabled"
+- Acceptable: "sbt crashes"
+
+### Formatting
+
+Format code and console outputs:
+
+````markdown
+```scala
+name := "foo"
+```
+````
+
+See [example issue #327](https://github.com/sbt/sbt/issues/327).
+
+## Resources
+
+<CardGroup cols={2}>
+  <Card title="Development Environment" icon="laptop-code" href="https://github.com/sbt/sbt/blob/develop/contributing-docs/02_development_environment.md">
+    Setup guide for sbt development
+  </Card>
+  
+  <Card title="Coding Style" icon="code" href="https://github.com/sbt/sbt/blob/develop/contributing-docs/03_coding_style.md">
+    Style guide and best practices
+  </Card>
+  
+  <Card title="Profiling" icon="gauge-high" href="https://github.com/sbt/sbt/blob/develop/PROFILING.md">
+    Performance profiling guide
+  </Card>
+  
+  <Card title="Architecture" icon="sitemap" href="/advanced/architecture">
+    Understanding sbt's architecture
+  </Card>
+</CardGroup>
+
+## Community
+
+- [Scala Discord](https://discord.com/invite/scala) - sbt channel
+- [Stack Overflow](https://stackoverflow.com/questions/tagged/sbt) - Q&A
+- [GitHub Discussions](https://github.com/sbt/sbt/discussions) - Ideas and proposals
+- [GitHub Issues](https://github.com/sbt/sbt/issues) - Bug reports
+
+Thank you for taking the time to contribute to sbt!

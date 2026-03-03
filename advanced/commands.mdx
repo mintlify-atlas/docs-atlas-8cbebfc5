@@ -1,0 +1,574 @@
+---
+title: Command Definition
+description: Creating custom sbt commands with argument parsing and state management
+---
+
+This guide explains how to define custom commands in sbt, including argument parsing, help text, and integration with the command system.
+
+## What are Commands?
+
+From `Command.scala:18`, a command is:
+
+```scala
+/**
+ * An operation that can be executed from the sbt console.
+ *
+ * The operation takes a State as a parameter and returns a State.
+ * This means that a command can look at or modify other sbt settings.
+ * Typically you would resort to a command when you need to do something 
+ * that's impossible in a regular task.
+ */
+sealed trait Command {
+  def help: State => Help
+  def parser: State => Parser[() => State]
+  def tags: AttributeMap
+  def nameOption: Option[String]
+}
+```
+
+Commands are more flexible than tasks because they:
+- Can modify the command queue
+- Can access and modify state directly
+- Don't participate in the task graph
+- Can provide custom argument parsing
+
+## Command Types
+
+### SimpleCommand
+
+A named command with a fixed parser:
+
+```scala
+private[sbt] final class SimpleCommand(
+  val name: String,
+  private[sbt] val help0: Help,
+  val parser: State => Parser[() => State],
+  val tags: AttributeMap
+) extends Command
+```
+
+### ArbitraryCommand
+
+A command with dynamic parsing logic:
+
+```scala
+private[sbt] final class ArbitraryCommand(
+  val parser: State => Parser[() => State],
+  val help: State => Help,
+  val tags: AttributeMap,
+  override val nameOption: Option[String]
+) extends Command
+```
+
+## Basic Command Definition
+
+### No-Argument Command
+
+From `Command.scala:95`:
+
+```scala
+def command(name: String, help: Help = Help.empty)(f: State => State): Command =
+  make(name, help)(state => success(() => f(state)))
+```
+
+Example:
+
+```scala
+val hello = Command.command("hello") { state =>
+  state.log.info("Hello, sbt!")
+  state
+}
+```
+
+### With Help Text
+
+```scala
+val greet = Command.command(
+  "greet",
+  "Greet the user",
+  """Prints a greeting message.
+    |Usage: greet
+  """.stripMargin
+) { state =>
+  state.log.info("Greetings!")
+  state
+}
+```
+
+### Single-Argument Command
+
+From `Command.scala:104`:
+
+```scala
+def single(name: String, help: Help = Help.empty)(f: (State, String) => State): Command =
+  make(name, help)(state => token(trimmed(spacedAny(name)).map(apply1(f, state))))
+```
+
+Example:
+
+```scala
+val echo = Command.single("echo") { (state, arg) =>
+  state.log.info(arg)
+  state
+}
+```
+
+Usage: `echo "Hello world"`
+
+### Multi-Argument Command
+
+From `Command.scala:115`:
+
+```scala
+def args(
+  name: String, 
+  display: String, 
+  help: Help = Help.empty
+)(f: (State, Seq[String]) => State): Command
+```
+
+Example:
+
+```scala
+val concatenate = Command.args("concat", "<arg>+") { (state, args) =>
+  val result = args.mkString(" ")
+  state.log.info(result)
+  state
+}
+```
+
+Usage: `concat foo bar baz` → prints "foo bar baz"
+
+## Argument Parsing
+
+### Parser Combinators
+
+sbt uses parser combinators for argument parsing:
+
+```scala
+import sbt.internal.util.complete.DefaultParsers._
+import sbt.internal.util.complete.Parser
+
+val myCommand = Command("deploy")(_ => 
+  (Space ~> token("staging" | "production")) ~ 
+  (Space ~> token("--force").?)
+) { case (state, (env, force)) =>
+  val forceFlag = force.isDefined
+  state.log.info(s"Deploying to $env (force: $forceFlag)")
+  state
+}
+```
+
+### Common Parsers
+
+From `DefaultParsers`:
+
+```scala
+// Space-separated arguments
+spaceDelimited("<arg>"): Parser[Seq[String]]
+
+// Optional parser
+token("--verbose").?: Parser[Option[String]]
+
+// Alternative parsers
+("true" | "false"): Parser[String]
+
+// Repeated parser
+token(ID).+: Parser[Seq[String]]
+
+// Chained parsers
+(Space ~> token(ID)) ~ (Space ~> token(NatBasic)): Parser[(String, Int)]
+```
+
+### Custom Parser Example
+
+```scala
+val complexCmd = Command("config") { state =>
+  val keyParser = token(ID, "<key>")
+  val valueParser = token(StringBasic, "<value>")
+  val assignment = (keyParser ~ (Space ~ '=' ~ Space) ~ valueParser)
+  
+  Space ~> assignment
+} { case (state, (key, _, value)) =>
+  state.log.info(s"Setting $key = $value")
+  state.put(AttributeKey[String](key), value)
+}
+```
+
+Usage: `config foo = bar`
+
+## Help System
+
+From `Command.scala:232`, the `Help` type provides:
+
+```scala
+trait Help {
+  def detail: Map[String, String]
+  def brief: Seq[(String, String)]
+  def more: Set[String]
+}
+```
+
+### Creating Help
+
+```scala
+val help = Help(
+  name = "mycommand",
+  briefHelp = ("mycommand", "Brief description"),
+  detail = """Detailed description.
+    |
+    |Usage:
+    |  mycommand <arg1> <arg2>
+    |
+    |Options:
+    |  --flag    Enable flag
+  """.stripMargin
+)
+
+val cmd = Command.make("mycommand", help)(parser)
+```
+
+### Help Display
+
+Users see help via:
+- `help` - Lists all commands with brief descriptions
+- `help <command>` - Shows detailed help for a command
+
+## State Manipulation
+
+### Modifying Command Queue
+
+Commands can schedule other commands:
+
+```scala
+val buildAll = Command.command("buildAll") { state =>
+  val commands = Seq(
+    Exec("clean", None),
+    Exec("compile", None),
+    Exec("test", None)
+  )
+  state.copy(remainingCommands = commands ::: state.remainingCommands)
+}
+```
+
+### Conditional Command Execution
+
+```scala
+val conditionalTest = Command.command("testIfChanged") { state =>
+  val hasChanges = /* check for changes */
+  if (hasChanges) {
+    Exec("test", None) +: state
+  } else {
+    state.log.info("No changes detected, skipping tests")
+    state
+  }
+}
+```
+
+### Error Handling
+
+From `Main.scala:907`:
+
+```scala
+val safeCommand = Command.command("safe") { state =>
+  try {
+    // Risky operation
+    performOperation()
+    state
+  } catch {
+    case e: Exception =>
+      state.log.error(s"Command failed: ${e.getMessage}")
+      state.fail
+  }
+}
+```
+
+Failed state triggers `onFailure` handler:
+
+```scala
+state.copy(onFailure = Some(Exec("shell", None)))
+```
+
+## Advanced Command Patterns
+
+### State-Dependent Parsing
+
+```scala
+val stateAwareCmd = Command("switch") { state =>
+  val projects = Project.extract(state).structure.allProjectRefs
+  val projectNames = projects.map(_.project)
+  Space ~> token(oneOf(projectNames.toSet))
+} { (state, projectName) =>
+  state.log.info(s"Switching to $projectName")
+  // Project switching logic
+  state
+}
+```
+
+### Aliased Commands
+
+From `Main.scala:331`, commands can be aliased:
+
+```scala
+val alias = Command(AliasCommand, Help.more(AliasCommand, AliasDetailed)) { s =>
+  val name = token(OpOrID.examples(aliasNames(s)*))
+  val assign = token(OptSpace ~ '=' ~ OptSpace)
+  val to = matched(s.combinedParser, partial = true).failOnException
+  OptSpace ~> (name ~ (assign ~> to.?).?).?
+} { (s, args) =>
+  runAlias(s, args, Project.definedKeyNames)
+}
+```
+
+Usage:
+```
+alias compile-fast = ;set scalacOptions := Seq("-Yrangepos", "-Ywarn-unused"); compile
+```
+
+### Tab Completion
+
+Provide tab completion hints:
+
+```scala
+val withCompletion = Command("file") { state =>
+  val files = (baseDirectory.value ** "*.scala").get.map(_.getName)
+  Space ~> token(oneOf(files.toSet))
+} { (state, fileName) =>
+  state.log.info(s"Selected: $fileName")
+  state
+}
+```
+
+Tab completion shows available .scala files.
+
+## Command Processing
+
+From `Command.scala:185`, how commands are processed:
+
+```scala
+def process(command: String, state: State, onParseError: String => Unit): State = {
+  parse(command, state.combinedParser) match {
+    case Right(s) => s()  // Apply command
+    case Left(errMsg) =>
+      state.log.error(errMsg)
+      onParseError(errMsg)
+      state.fail
+  }
+}
+```
+
+The parser produces a `() => State` function that's executed to get the new state.
+
+## Built-in Command Examples
+
+### About Command
+
+From `Main.scala:406`:
+
+```scala
+def about = Command.command(AboutCommand, aboutBrief, aboutDetailed) { s =>
+  s.log.info(aboutString(s))
+  s
+}
+```
+
+### Shell Command
+
+From `Main.scala:1093`, enters interactive mode:
+
+```scala
+def shell: Command = Command.command(Shell, Help.more(Shell, ShellDetailed)) { s0 =>
+  val exchange = StandardMain.exchange
+  val s1 = exchange.run(s0)
+  
+  if (ITerminal.console.prompt == Prompt.Batch) 
+    ITerminal.console.setPrompt(Prompt.Pending)
+  
+  exchange.prompt(ConsolePromptEvent(s0))
+  val exec = getExec(s1, minGCInterval)
+  
+  s1.copy(
+    onFailure = Some(Exec(Shell, None)),
+    remainingCommands = exec +: Exec(Shell, None) +: s1.remainingCommands
+  ).setInteractive(true)
+}
+```
+
+### LoadProject Command
+
+From `Main.scala:943`:
+
+```scala
+def loadProject: Command =
+  Command(LoadProject, LoadProjectBrief, LoadProjectDetailed)(loadProjectParser) {
+    (s, arg) => loadProjectCommands(arg) ::: s
+  }
+
+def loadProjectCommands(arg: String): List[String] =
+  StashOnFailure ::
+  (OnFailure + " " + loadProjectCommand(LoadFailed, arg)) ::
+  loadProjectCommand(LoadProjectImpl, arg) ::
+  State.FailureWall ::
+  PopOnFailure ::
+  Nil
+```
+
+This shows command composition and error handling.
+
+## Command Registration
+
+Commands are registered in the state:
+
+```scala
+object MyPlugin extends AutoPlugin {
+  override lazy val buildSettings = Seq(
+    commands ++= Seq(myCommand1, myCommand2)
+  )
+}
+```
+
+Or added to initial state:
+
+```scala
+val state = State(
+  configuration,
+  initialCommands ++ customCommands,  // Add commands here
+  ...
+)
+```
+
+## Command Validation
+
+From `Command.scala:142`, command names must be valid:
+
+```scala
+assert(Command.validID(name), s"'$name' is not a valid command name.")
+
+def validID(name: String): Boolean = 
+  DefaultParsers.matches(OpOrID, name)
+```
+
+Valid names:
+- Start with letter or operator character
+- Contain letters, digits, hyphens, or underscores
+- Examples: `compile`, `test:compile`, `publish-local`
+
+<Warning>
+Command names must be valid identifiers. Use `Command.validID()` to verify.
+</Warning>
+
+## Command Tags
+
+Commands can be tagged with metadata:
+
+```scala
+val taggedCmd = Command.command("tagged") { state =>
+  state
+}.tag(AttributeKey[String]("category"), "build")
+```
+
+## Distance and Suggestions
+
+From `Command.scala:214`, sbt suggests similar commands on typos:
+
+```scala
+def suggestions(
+  a: String,
+  bs: Seq[String],
+  maxDistance: Int = 3,
+  maxSuggestions: Int = 3
+): Seq[String] =
+  bs.map(b => (b, distance(a, b)))
+    .filter(_._2 <= maxDistance)
+    .sortBy(_._2)
+    .take(maxSuggestions)
+    .map(_._1)
+
+def distance(a: String, b: String): Int =
+  EditDistance.levenshtein(a, b, ...)
+```
+
+Example:
+```
+> complie
+Not a valid command: complie (similar: compile)
+```
+
+## Best Practices
+
+1. **Use Tasks When Possible**: Commands are for workflow control; use tasks for build logic
+2. **Provide Good Help**: Users discover features through help text
+3. **Validate Input**: Check arguments and provide clear error messages
+4. **Handle Failures**: Always handle exceptions and mark state as failed
+5. **Keep Pure**: Avoid side effects when possible; return new state
+6. **Use Parsers**: Leverage parser combinators for robust argument parsing
+
+<Tip>
+Use `Command.command` for simple commands and `Command.apply` when you need argument parsing.
+</Tip>
+
+## Complete Example
+
+```scala
+import sbt._
+import sbt.Keys._
+import sbt.internal.util.complete.DefaultParsers._
+
+object DeployPlugin extends AutoPlugin {
+  object autoImport {
+    val deployEnv = AttributeKey[String]("deploy-env")
+  }
+  
+  import autoImport._
+  
+  lazy val deployCommand = Command("deploy") { state =>
+    val envParser = Space ~> token("dev" | "staging" | "prod")
+    val forceFlag = (Space ~> token("--force")).?
+    envParser ~ forceFlag
+  } { case (state, (env, force)) =>
+    state.log.info(s"Deploying to $env...")
+    
+    if (force.isEmpty) {
+      state.log.warn("Running without --force. Continue? (y/n)")
+      // Confirmation logic
+    }
+    
+    try {
+      // Deployment logic
+      val compiled = Project.runTask(Compile / packageBin, state) match {
+        case Some((newState, Value(jar))) => 
+          state.log.info(s"Deploying $jar to $env")
+          newState
+        case Some((newState, Inc(err))) =>
+          state.log.error("Compilation failed")
+          return newState.fail
+        case None =>
+          state.log.error("Package task not found")
+          return state.fail
+      }
+      
+      compiled.put(deployEnv, env)
+    } catch {
+      case e: Exception =>
+        state.log.error(s"Deployment failed: ${e.getMessage}")
+        state.fail
+    }
+  }
+  
+  override lazy val buildSettings = Seq(
+    commands += deployCommand
+  )
+}
+```
+
+Usage:
+```
+> deploy staging
+> deploy prod --force
+```
+
+## See Also
+
+- [Build State Management](/advanced/build-state)
+- [Task Graph and Execution](/advanced/task-graph)
+- [Custom Settings and Tasks](/advanced/custom-settings)

@@ -1,80 +1,527 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: "Quick Start Guide"
+description: "Create your first sbt project in minutes. Learn the basics of build.sbt, running tasks, and using the interactive shell."
 ---
 
-## Get started in three steps
+# Quick Start Guide
 
-Get your documentation site running locally and make your first customization.
-
-### Step 1: Set up your local environment
-
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 2: Deploy your changes
-
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
-
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
-
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 3: Go live
-
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
-
-## Next steps
-
-Now that you have your docs running, explore these key features:
-
-<CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
-</CardGroup>
+This guide will walk you through creating your first sbt project and introduce you to the essential commands and concepts.
 
 <Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
+Make sure you have [installed sbt](/installation) before continuing.
 </Note>
+
+## Create Your First Project
+
+Let's create a simple "Hello World" Scala application.
+
+<Steps>
+  <Step title="Create a project directory">
+    ```bash
+    mkdir hello-world
+    cd hello-world
+    ```
+  </Step>
+
+  <Step title="Create the build definition">
+    Create a file named `build.sbt` in the project root:
+
+    ```scala build.sbt
+    name := "hello-world"
+    version := "0.1.0"
+    scalaVersion := "3.8.2"
+    ```
+
+    This minimal build file tells sbt:
+    - Your project's name is "hello-world"
+    - The version is "0.1.0"
+    - You're using Scala 3.8.2
+
+    <Tip>
+    The `:=` operator sets a value for a setting. Think of it as assignment for build configuration.
+    </Tip>
+  </Step>
+
+  <Step title="Create your source file">
+    Create the source directory structure and your first Scala file:
+
+    ```bash
+    mkdir -p src/main/scala
+    ```
+
+    Create `src/main/scala/Main.scala`:
+
+    ```scala src/main/scala/Main.scala
+    @main def hello(): Unit =
+      println("Hello, World!")
+      println("Welcome to sbt!")
+    ```
+
+    This uses Scala 3's `@main` annotation to create an entry point.
+  </Step>
+
+  <Step title="Start the sbt shell">
+    Launch sbt's interactive shell:
+
+    ```bash
+    sbt
+    ```
+
+    The first time you run sbt, it will:
+    - Download the sbt launcher and dependencies (this may take a minute)
+    - Load your project
+    - Present you with the sbt prompt: `sbt:hello-world>`
+
+    <Note>
+    The sbt shell keeps your project loaded in memory, making subsequent commands much faster than running `sbt` separately each time.
+    </Note>
+  </Step>
+
+  <Step title="Compile your project">
+    At the sbt prompt, compile your code:
+
+    ```bash
+    compile
+    ```
+
+    You'll see output like:
+
+    ```
+    [info] compiling 1 Scala source to /path/to/hello-world/target/scala-3.8.2/classes ...
+    [success] Total time: 2 s
+    ```
+
+    Your compiled classes are now in `target/scala-3.8.2/classes/`.
+  </Step>
+
+  <Step title="Run your application">
+    Execute your program:
+
+    ```bash
+    run
+    ```
+
+    You should see:
+
+    ```
+    [info] running hello
+    Hello, World!
+    Welcome to sbt!
+    [success] Total time: 0 s
+    ```
+
+    Congratulations! You've built and run your first sbt project!
+  </Step>
+</Steps>
+
+## Understanding the Project Structure
+
+Your project now looks like this:
+
+```
+hello-world/
+├── build.sbt                    # Build definition
+├── project/
+│   ├── build.properties         # sbt version (auto-generated)
+│   └── target/                  # Build metadata
+├── src/
+│   ├── main/
+│   │   ├── scala/              # Your Scala source files
+│   │   │   └── Main.scala
+│   │   ├── java/               # Java sources go here (if any)
+│   │   └── resources/          # Non-code files (configs, etc.)
+│   └── test/
+│       ├── scala/              # Test source files
+│       └── resources/          # Test resources
+└── target/                      # Compiled output and generated files
+```
+
+<Tip>
+The `target/` directory contains all generated files and can be safely deleted. sbt will regenerate it when needed.
+</Tip>
+
+## Essential sbt Commands
+
+Here are the most common commands you'll use in the sbt shell:
+
+<CodeGroup>
+```bash Compilation
+compile          # Compile main sources
+Test / compile   # Compile test sources
+```
+
+```bash Running
+run              # Run the main class
+Test / run       # Run a test main class
+```
+
+```bash Testing  
+test             # Run all tests
+testOnly MySpec  # Run specific test
+testQuick        # Run only previously failed tests
+```
+
+```bash Cleanup
+clean            # Delete generated files in target/
+reload           # Reload the build definition after changes
+```
+
+```bash Information
+projects         # List all projects in the build
+show name        # Display value of 'name' setting
+inspect compile  # Show detailed info about 'compile' task
+```
+</CodeGroup>
+
+<Note>
+You can run these commands from the sbt shell (recommended) or as one-off commands like `sbt compile` from your terminal.
+</Note>
+
+## Continuous Build
+
+One of sbt's most powerful features is watching for file changes:
+
+```bash
+~compile    # Recompile when sources change
+~test       # Re-run tests when sources change  
+~run        # Re-run your app when sources change
+```
+
+The `~` prefix tells sbt to watch for changes and automatically re-execute the command. Press Enter to stop watching.
+
+<Tip>
+Use `~testQuick` during development to automatically run only the tests affected by your changes. It's a huge productivity boost!
+</Tip>
+
+## Adding Dependencies
+
+Let's add a library dependency to your project. Update your `build.sbt`:
+
+```scala build.sbt
+name := "hello-world"
+version := "0.1.0"
+scalaVersion := "3.8.2"
+
+libraryDependencies += "org.typelevel" %% "cats-core" % "2.10.0"
+```
+
+The `%%` operator automatically adds the Scala version suffix (e.g., `cats-core_3`).
+
+After saving, reload sbt:
+
+```bash
+reload
+```
+
+sbt will download the dependency and its transitive dependencies.
+
+### Adding Test Dependencies
+
+To add a testing library like ScalaTest:
+
+```scala build.sbt
+libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.19" % Test
+```
+
+The `% Test` scope means this dependency is only available for test code.
+
+## Working with Tests
+
+Let's add a test to your project.
+
+<Steps>
+  <Step title="Add ScalaTest dependency">
+    Update `build.sbt`:
+
+    ```scala build.sbt
+    name := "hello-world"
+    version := "0.1.0"
+    scalaVersion := "3.8.2"
+
+    libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.19" % Test
+    ```
+
+    In the sbt shell, reload:
+
+    ```bash
+    reload
+    ```
+  </Step>
+
+  <Step title="Create a test file">
+    Create `src/test/scala/HelloSpec.scala`:
+
+    ```scala src/test/scala/HelloSpec.scala
+    import org.scalatest.flatspec.AnyFlatSpec
+    import org.scalatest.matchers.should.Matchers
+
+    class HelloSpec extends AnyFlatSpec with Matchers {
+      "A greeting" should "contain Hello" in {
+        val greeting = "Hello, World!"
+        greeting should include ("Hello")
+      }
+
+      it should "be friendly" in {
+        val greeting = "Hello, World!"
+        greeting should endWith ("World!")
+      }
+    }
+    ```
+  </Step>
+
+  <Step title="Run the tests">
+    ```bash
+    test
+    ```
+
+    You should see:
+
+    ```
+    [info] HelloSpec:
+    [info] A greeting
+    [info] - should contain Hello
+    [info] - should be friendly
+    [info] Run completed in 321 milliseconds.
+    [info] Total number of tests run: 2
+    [info] Suites: completed 1, aborted 0
+    [info] Tests: succeeded 2, failed 0, canceled 0, ignored 0, pending 0
+    [info] All tests passed.
+    [success] Total time: 1 s
+    ```
+  </Step>
+</Steps>
+
+## Interactive Shell Features
+
+The sbt shell has several productivity features:
+
+### Tab Completion
+
+Press Tab to see available commands or complete partial commands:
+
+```bash
+sbt:hello-world> com[Tab]
+compile     console     consoleQuick
+```
+
+### Command History
+
+Use Up/Down arrows to navigate command history, just like in your shell.
+
+### Multi-Command Execution
+
+Run multiple commands separated by semicolons:
+
+```bash
+clean ; compile ; test
+```
+
+### Command Aliases
+
+Define shortcuts in your `build.sbt`:
+
+```scala build.sbt
+addCommandAlias("testc", ";clean;test")
+addCommandAlias("cq", "~testQuick")
+```
+
+Now you can run `testc` instead of typing `clean ; test`.
+
+## Specifying the sbt Version
+
+Create `project/build.properties` to specify which sbt version your project uses:
+
+```properties project/build.properties
+sbt.version=2.0.0-RC9
+```
+
+This ensures everyone working on the project uses the same sbt version, and the sbt launcher will automatically download it if needed.
+
+## Next Steps: Java Example
+
+Sbt works great with Java too! Here's a quick Java example:
+
+<Steps>
+  <Step title="Create a Java project">
+    ```bash
+    mkdir hello-java
+    cd hello-java
+    ```
+
+    Create `build.sbt`:
+
+    ```scala build.sbt
+    name := "hello-java"
+    version := "0.1.0"
+    
+    // No Scala version needed for pure Java projects
+    crossPaths := false
+    autoScalaLibrary := false
+    ```
+  </Step>
+
+  <Step title="Create Java source">
+    Create `src/main/java/Hello.java`:
+
+    ```java src/main/java/Hello.java
+    public class Hello {
+        public static void main(String[] args) {
+            System.out.println("Hello from Java!");
+        }
+    }
+    ```
+  </Step>
+
+  <Step title="Build and run">
+    ```bash
+    sbt compile run
+    ```
+
+    Output:
+    ```
+    [info] compiling 1 Java source to target/classes ...
+    [info] running Hello
+    Hello from Java!
+    [success] Total time: 1 s
+    ```
+  </Step>
+</Steps>
+
+## Common Patterns
+
+### Setting Java Version
+
+To specify Java compiler version:
+
+```scala build.sbt
+javacOptions ++= Seq("-source", "17", "-target", "17")
+```
+
+### Running with Arguments
+
+Pass arguments to your application:
+
+```bash
+run arg1 arg2 arg3
+```
+
+### Forking the JVM
+
+Run your application in a separate JVM:
+
+```scala build.sbt
+fork := true
+```
+
+### Setting JVM Options
+
+```scala build.sbt
+javaOptions ++= Seq("-Xmx512m", "-Dconfig.file=conf/application.conf")
+```
+
+## Troubleshooting
+
+### Compilation Errors
+
+If you see compilation errors:
+
+1. Check that your Scala version matches your code (Scala 2 vs Scala 3 syntax differs)
+2. Make sure source files are in the correct directory (`src/main/scala/`)
+3. Verify dependencies are correctly specified in `build.sbt`
+
+### Dependency Resolution Issues
+
+If dependencies fail to download:
+
+```bash
+# Clear the cache and retry
+clean
+update
+```
+
+### Out of Memory
+
+If you get OutOfMemory errors:
+
+```bash
+# Exit sbt and set memory options
+export SBT_OPTS="-Xmx2G"
+sbt
+```
+
+### Reload After Changes
+
+Always reload after editing `build.sbt`:
+
+```bash
+reload
+```
+
+## Learning More
+
+Now that you've created your first project, dive deeper:
+
+<CardGroup cols={2}>
+  <Card title="Build Definition" icon="file-code" href="/build-definition">
+    Learn about settings, tasks, scopes, and how to structure complex builds
+  </Card>
+  
+  <Card title="Dependency Management" icon="box" href="/dependency-management">
+    Master library dependencies, resolvers, and managing transitive dependencies  
+  </Card>
+  
+  <Card title="Multi-Project Builds" icon="folder-tree" href="/multi-project">
+    Organize large codebases with multiple subprojects and shared settings
+  </Card>
+  
+  <Card title="Plugins" icon="puzzle-piece" href="/plugins">
+    Extend sbt with plugins for testing, packaging, deployment and more
+  </Card>
+</CardGroup>
+
+## Quick Reference
+
+<CodeGroup>
+```bash Common Commands
+sbt              # Start interactive shell
+sbt compile      # One-off compile
+sbt "run arg1"   # Run with arguments (note quotes)
+sbt clean test   # Clean then test
+```
+
+```bash Shell Commands  
+compile          # Compile sources
+test             # Run tests
+run              # Run main class
+console          # Start Scala REPL with project on classpath
+~testQuick       # Watch mode for tests
+reload           # Reload build after build.sbt changes
+exit             # Exit sbt shell
+```
+
+```bash Information
+projects         # List projects
+project foo      # Switch to project 'foo'
+show compile     # Show compile task details
+last             # Show last command output
+last compile     # Show last compile output
+```
+</CodeGroup>
+
+<Tip>
+Keep the sbt shell running during development. Starting it once and reusing it is much faster than restarting sbt for every command.
+</Tip>
+
+## Summary
+
+You've learned:
+
+- ✅ How to create a new sbt project from scratch
+- ✅ The standard project structure (`src/main/scala`, `build.sbt`)
+- ✅ Essential commands: `compile`, `run`, `test`, `reload`
+- ✅ How to add dependencies to your project
+- ✅ Continuous build with the `~` prefix
+- ✅ Working with the interactive shell
+- ✅ Both Scala and Java project setup
+
+Happy building with sbt!

@@ -1,0 +1,438 @@
+---
+title: Publishing
+description: Learn how to publish your Scala projects to Maven and Ivy repositories
+---
+
+This guide covers how to configure your project for publishing, generate POM files, and publish artifacts to repositories.
+
+## Basic Publishing Configuration
+
+Configure the essential metadata for publishing:
+
+```scala build.sbt
+organization := "com.example"
+name := "my-library"
+version := "1.0.0"
+
+// Project metadata
+description := "A useful Scala library"
+licenses := Seq("Apache-2.0" -> url("https://www.apache.org/licenses/LICENSE-2.0"))
+homepage := Some(url("https://github.com/example/my-library"))
+
+// SCM information
+scmInfo := Some(
+  ScmInfo(
+    url("https://github.com/example/my-library"),
+    "scm:git@github.com:example/my-library.git"
+  )
+)
+
+// Developers
+developers := List(
+  Developer(
+    id = "johndoe",
+    name = "John Doe",
+    email = "john@example.com",
+    url = url("https://github.com/johndoe")
+  )
+)
+```
+
+<Note>
+These metadata fields are included in the generated POM file and displayed on Maven Central.
+</Note>
+
+## Publishing Style
+
+Choose between Maven and Ivy publishing:
+
+```scala build.sbt
+// Maven-style publishing (recommended for most projects)
+publishMavenStyle := true
+
+// Ivy-style publishing
+publishMavenStyle := false
+```
+
+<Tip>
+Use Maven-style publishing (`publishMavenStyle := true`) for publishing to Maven Central or other Maven repositories.
+</Tip>
+
+## Publish Destination
+
+Configure where to publish:
+
+<CodeGroup>
+```scala Maven Central via Sonatype
+publishTo := {
+  val nexus = "https://s01.oss.sonatype.org/"
+  if (isSnapshot.value)
+    Some("snapshots" at nexus + "content/repositories/snapshots")
+  else
+    Some("releases" at nexus + "service/local/staging/deploy/maven2")
+}
+```
+
+```scala Custom Nexus Repository
+publishTo := {
+  val nexus = "https://nexus.example.com/"
+  if (isSnapshot.value)
+    Some("snapshots" at nexus + "content/repositories/snapshots")
+  else
+    Some("releases" at nexus + "content/repositories/releases")
+}
+```
+
+```scala File-based Repository
+publishTo := Some(Resolver.file("file",  new File("path/to/repo")))
+```
+
+```scala Local Publishing Only
+publishTo := None
+```
+</CodeGroup>
+
+## Publishing Tasks
+
+sbt provides several publishing tasks:
+
+```bash
+# Publish to the repository defined in publishTo
+sbt publish
+
+# Publish to local Ivy repository (~/.ivy2/local)
+sbt publishLocal
+
+# Publish to local Maven repository (~/.m2/repository)
+sbt publishM2
+
+# Generate POM file only
+sbt makePom
+```
+
+<Steps>
+  <Step title="Test locally">
+    ```bash
+    sbt publishLocal
+    ```
+    Publishes to your local Ivy cache for testing.
+  </Step>
+  
+  <Step title="Test with Maven">
+    ```bash
+    sbt publishM2
+    ```
+    Publishes to your local Maven repository.
+  </Step>
+  
+  <Step title="Publish to remote">
+    ```bash
+    sbt publish
+    ```
+    Publishes to the configured remote repository.
+  </Step>
+</Steps>
+
+## Credentials
+
+Configure credentials for publishing to private repositories:
+
+<CodeGroup>
+```scala Inline Credentials
+credentials += Credentials(
+  "Sonatype Nexus Repository Manager",
+  "s01.oss.sonatype.org",
+  "username",
+  "password"
+)
+```
+
+```scala From File
+credentials += Credentials(Path.userHome / ".sbt" / "sonatype_credentials")
+```
+
+```scala From Environment
+credentials ++= (
+  for {
+    username <- sys.env.get("SONATYPE_USERNAME")
+    password <- sys.env.get("SONATYPE_PASSWORD")
+  } yield Credentials(
+    "Sonatype Nexus Repository Manager",
+    "s01.oss.sonatype.org",
+    username,
+    password
+  )
+).toSeq
+```
+</CodeGroup>
+
+Credentials file format:
+
+```properties ~/.sbt/sonatype_credentials
+realm=Sonatype Nexus Repository Manager
+host=s01.oss.sonatype.org
+user=your-username
+password=your-password
+```
+
+## POM Customization
+
+### Extra POM Elements
+
+Add custom XML to the generated POM:
+
+```scala build.sbt
+pomExtra := 
+  <properties>
+    <info.apiURL>https://api.example.com</info.apiURL>
+  </properties>
+```
+
+### POM Post-Processing
+
+Transform the generated POM:
+
+```scala build.sbt
+import scala.xml._
+import scala.xml.transform._
+
+pomPostProcess := { (node: Node) =>
+  new RuleTransformer(new RewriteRule {
+    override def transform(node: Node): Seq[Node] = node match {
+      case e: Elem if e.label == "dependency" && 
+        (e \\ "groupId").text == "bad-dependency" =>
+        NodeSeq.Empty
+      case _ => node
+    }
+  }).transform(node).head
+}
+```
+
+### Repository Filtering
+
+Control which repositories appear in the POM:
+
+```scala build.sbt
+// Include all repositories
+pomAllRepositories := true
+
+// Filter repositories
+pomIncludeRepository := { repo: MavenRepository =>
+  repo.root.startsWith("https://")
+}
+```
+
+<Warning>
+Be careful when including custom repositories in published POMs as it can affect dependency resolution for users.
+</Warning>
+
+## Publishing Artifacts
+
+### Control What Gets Published
+
+```scala build.sbt
+// Publish main artifact
+Compile / packageBin / publishArtifact := true
+
+// Publish test artifact
+Test / packageBin / publishArtifact := false
+
+// Publish sources
+Compile / packageSrc / publishArtifact := true
+
+// Publish documentation
+Compile / packageDoc / publishArtifact := true
+```
+
+### Custom Artifacts
+
+Define custom artifacts to publish:
+
+```scala build.sbt
+artifacts ++= Seq(
+  Artifact(
+    name = "my-library",
+    `type` = "zip",
+    extension = "zip",
+    classifier = "assets"
+  )
+)
+
+packagedArtifacts += {
+  val assetsZip = (Compile / target).value / "my-library-assets.zip"
+  // Create the zip...
+  artifacts.value.head -> assetsZip
+}
+```
+
+## Cross-Publishing
+
+Publish for multiple Scala versions:
+
+```scala build.sbt
+crossScalaVersions := Seq("2.13.12", "3.3.1")
+```
+
+```bash
+# Publish for all Scala versions
+sbt +publish
+
+# Publish locally for all versions
+sbt +publishLocal
+
+# Publish for specific version
+sbt ++2.13.12 publish
+```
+
+## sbt Plugin Publishing
+
+For sbt plugins, additional configuration is needed:
+
+```scala build.sbt
+sbtPlugin := true
+
+// The sbt version to compile against
+pluginCrossBuild / sbtVersion := "2.0.0-M2"
+
+// Publish legacy Maven-style (for compatibility)
+sbtPluginPublishLegacyMavenStyle := true
+```
+
+```bash
+# Publish plugin for multiple sbt versions  
+sbt +publish
+```
+
+## Signing Artifacts
+
+Sign your artifacts for publishing to Maven Central:
+
+```scala project/plugins.sbt
+addSbtPlugin("com.github.sbt" % "sbt-pgp" % "2.2.1")
+```
+
+```bash
+# Use PGP key from keyring
+sbt publishSigned
+
+# Or configure key
+sbt set Global / usePgpKeyHex("DEADBEEF")
+```
+
+<Note>
+Maven Central requires signed artifacts. Use sbt-pgp plugin for signing.
+</Note>
+
+## Staging and Release
+
+For Sonatype/Maven Central, use a staging workflow:
+
+```scala project/plugins.sbt
+addSbtPlugin("org.xerial.sbt" % "sbt-sonatype" % "3.10.0")
+addSbtPlugin("com.github.sbt" % "sbt-pgp" % "2.2.1")
+```
+
+```bash
+# Publish signed artifacts to staging
+sbt publishSigned
+
+# Close and release staging repository
+sbt sonatypeBundleRelease
+```
+
+## Version Management
+
+### Snapshot Versions
+
+```scala build.sbt
+version := "1.0.0-SNAPSHOT"
+
+isSnapshot := version.value.endsWith("-SNAPSHOT")
+```
+
+Snapshots are published to snapshot repositories and can be overwritten.
+
+### Release Versions
+
+```scala build.sbt
+version := "1.0.0"
+```
+
+Release versions are immutable once published to Maven Central.
+
+### Version Scheme
+
+Declare your versioning scheme:
+
+```scala build.sbt
+versionScheme := Some("early-semver")
+// Options: "early-semver", "pvp", "semver-spec", "strict"
+```
+
+<Tip>
+Declaring `versionScheme` helps dependency resolution understand version compatibility.
+</Tip>
+
+## Publishing Workflow
+
+<Steps>
+  <Step title="Configure metadata">
+    Set all required fields: organization, name, version, licenses, developers, scmInfo.
+  </Step>
+  
+  <Step title="Test locally">
+    ```bash
+    sbt publishLocal
+    ```
+  </Step>
+  
+  <Step title="Configure credentials">
+    Add credentials for your target repository.
+  </Step>
+  
+  <Step title="Set publish destination">
+    Configure `publishTo` for your repository.
+  </Step>
+  
+  <Step title="Sign artifacts (for Maven Central)">
+    Use sbt-pgp to sign your artifacts.
+  </Step>
+  
+  <Step title="Publish">
+    ```bash
+    sbt publish
+    ```
+  </Step>
+</Steps>
+
+## Best Practices
+
+<Steps>
+  <Step title="Complete metadata">
+    Always provide complete metadata: organization, licenses, SCM info, and developers.
+  </Step>
+  
+  <Step title="Use semantic versioning">
+    Follow semantic versioning and declare your `versionScheme`.
+  </Step>
+  
+  <Step title="Publish sources and docs">
+    Always publish source and documentation JARs for better IDE integration.
+  </Step>
+  
+  <Step title="Test before publishing">
+    Use `publishLocal` or `publishM2` to test your artifacts before publishing.
+  </Step>
+  
+  <Step title="Keep credentials secure">
+    Store credentials in files outside your repository or use environment variables.
+  </Step>
+  
+  <Step title="Sign releases">
+    Sign all release artifacts, especially for Maven Central.
+  </Step>
+  
+  <Step title="Cross-publish libraries">
+    For libraries, publish for multiple Scala versions using `crossScalaVersions`.
+  </Step>
+</Steps>

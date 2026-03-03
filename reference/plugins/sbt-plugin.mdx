@@ -1,0 +1,382 @@
+---
+title: SbtPlugin
+description: Plugin for developing sbt plugins with cross-building support and scripted testing
+---
+
+The `SbtPlugin` configures projects for sbt plugin development. It automatically sets up cross-building for different sbt and Scala versions and integrates the scripted testing framework for testing sbt plugins.
+
+## Activation
+
+<ParamField name="Trigger" type="Manual">
+  Not automatically enabled. Activate by setting `sbtPlugin := true` in your build.
+</ParamField>
+
+<ParamField name="Requires" type="ScriptedPlugin">
+  Depends on ScriptedPlugin for sbt plugin testing capabilities
+</ParamField>
+
+## Overview
+
+SbtPlugin provides specialized configuration for sbt plugin projects:
+
+- **Plugin Identification**: Marks the project as an sbt plugin
+- **Cross-Building**: Automatic sbt version cross-building configuration
+- **Scripted Testing**: Integration with sbt's scripted test framework
+- **Version Compatibility**: Maps Scala versions to compatible sbt versions
+
+When you enable this plugin, sbt automatically configures your project to produce an sbt plugin artifact with the correct metadata and dependencies.
+
+## Project Settings
+
+### Core Settings
+
+<ParamField name="sbtPlugin" type="Boolean">
+  Set to `true` to identify this project as an sbt plugin. This is the primary setting that activates plugin-specific behavior.
+</ParamField>
+
+<ParamField name="pluginCrossBuild / sbtVersion" type="String">
+  The sbt version to use when cross-building the plugin. Automatically determined based on `scalaBinaryVersion`:
+  
+  - Scala 3: Uses current `sbtVersion`
+  - Scala 2.12: Uses sbt 1.5.8
+  - Scala 2.10: Uses sbt 0.13.18 (legacy)
+</ParamField>
+
+## How It Works
+
+When `sbtPlugin := true` is set:
+
+1. **Plugin Artifact**: Your project is published as an sbt plugin with proper metadata
+2. **sbt Dependency**: Automatically adds the sbt main artifact as a dependency
+3. **Version Mapping**: Maps your Scala version to a compatible sbt binary version
+4. **Scripted Tests**: Enables scripted testing framework for plugin testing
+5. **Cross-Building**: Configures cross-building across sbt versions
+
+## Version Compatibility Matrix
+
+The plugin automatically maps Scala versions to sbt versions:
+
+| Scala Binary Version | Default sbt Version | Notes |
+|---------------------|---------------------|-------|
+| 3.x | Current sbt version | Scala 3 compatible with sbt 2.x |
+| 2.12.x | 1.5.8 | Standard for sbt 1.x plugins |
+| 2.10.x | 0.13.18 | Legacy sbt 0.13.x support |
+
+## Scripted Testing
+
+SbtPlugin requires and integrates with ScriptedPlugin, which provides:
+
+<ParamField name="scripted" type="InputTask[Unit]">
+  Runs scripted tests for your plugin. Scripted tests are integration tests that run your plugin in real sbt builds.
+</ParamField>
+
+<ParamField name="scriptedBufferLog" type="Boolean">
+  Whether to buffer scripted test output. Defaults based on execution mode.
+</ParamField>
+
+<ParamField name="scriptedBatchExecution" type="Boolean">
+  Enable batch execution of scripted tests for better performance.
+</ParamField>
+
+<ParamField name="scriptedLaunchOpts" type="Seq[String]">
+  JVM options passed to scripted test executions.
+</ParamField>
+
+Scripted tests are located in `src/sbt-test/<plugin-name>/<test-name>/` and use a simple script format to test plugin functionality.
+
+## Usage Examples
+
+### Basic Plugin Project
+
+```scala
+// project/plugins.sbt
+addSbtPlugin("com.eed3si9n" % "sbt-assembly" % "2.1.0")
+
+// build.sbt
+ThisBuild / organization := "com.example"
+ThisBuild / version := "0.1.0"
+ThisBuild / scalaVersion := "2.12.18"
+
+lazy val root = (project in file("."))
+  .settings(
+    name := "sbt-example-plugin",
+    sbtPlugin := true
+  )
+```
+
+### Cross-Building for Multiple sbt Versions
+
+```scala
+ThisBuild / crossSbtVersions := Seq("1.5.8", "1.9.7")
+
+lazy val root = (project in file("."))
+  .settings(
+    name := "sbt-example-plugin",
+    sbtPlugin := true,
+    
+    // Plugin dependencies
+    addSbtPlugin("org.scalameta" % "sbt-scalafmt" % "2.5.0")
+  )
+```
+
+### Configure Scripted Tests
+
+```scala
+lazy val root = (project in file("."))
+  .settings(
+    name := "sbt-example-plugin",
+    sbtPlugin := true,
+    
+    // Scripted configuration
+    scriptedLaunchOpts := {
+      scriptedLaunchOpts.value ++
+        Seq("-Xmx1024M", "-Dplugin.version=" + version.value)
+    },
+    scriptedBufferLog := false
+  )
+```
+
+### Plugin with Scala 3 Support
+
+```scala
+ThisBuild / scalaVersion := "3.3.1"
+
+lazy val root = (project in file("."))
+  .settings(
+    name := "sbt-scala3-plugin",
+    sbtPlugin := true,
+    
+    // Scala 3 plugins automatically use current sbt version
+    // No need to set pluginCrossBuild / sbtVersion
+  )
+```
+
+### Add Plugin Dependencies
+
+```scala
+lazy val root = (project in file("."))
+  .settings(
+    name := "sbt-composite-plugin",
+    sbtPlugin := true,
+    
+    // Other sbt plugins as dependencies
+    addSbtPlugin("com.typesafe.sbt" % "sbt-native-packager" % "1.9.16"),
+    addSbtPlugin("org.scalameta" % "sbt-scalafmt" % "2.5.0")
+  )
+```
+
+### Configure Publishing
+
+```scala
+lazy val root = (project in file("."))
+  .settings(
+    name := "sbt-example-plugin",
+    sbtPlugin := true,
+    organization := "com.example",
+    version := "1.0.0",
+    
+    // Plugin publishing configuration
+    publishMavenStyle := true,
+    publishTo := {
+      val nexus = "https://oss.sonatype.org/"
+      if (isSnapshot.value)
+        Some("snapshots" at nexus + "content/repositories/snapshots")
+      else
+        Some("releases" at nexus + "service/local/staging/deploy/maven2")
+    },
+    
+    licenses := Seq("Apache-2.0" -> url("https://www.apache.org/licenses/LICENSE-2.0.txt")),
+    homepage := Some(url("https://github.com/example/sbt-example-plugin")),
+    scmInfo := Some(
+      ScmInfo(
+        url("https://github.com/example/sbt-example-plugin"),
+        "scm:git@github.com:example/sbt-example-plugin.git"
+      )
+    ),
+    developers := List(
+      Developer(
+        id = "developer",
+        name = "Developer Name",
+        email = "developer@example.com",
+        url = url("https://example.com")
+      )
+    )
+  )
+```
+
+## Plugin Development Structure
+
+Typical sbt plugin project structure:
+
+```
+sbt-example-plugin/
+├── build.sbt                    # Build configuration
+├── project/
+│   ├── build.properties         # sbt version
+│   └── plugins.sbt              # Build plugins
+├── src/
+│   └── main/
+│       └── scala/
+│           └── example/
+│               └── ExamplePlugin.scala
+└── src/
+    └── sbt-test/
+        └── sbt-example-plugin/  # Scripted tests
+            ├── simple/
+            │   ├── build.sbt
+            │   ├── project/build.properties
+            │   └── test
+            └── advanced/
+                ├── build.sbt
+                ├── project/build.properties
+                └── test
+```
+
+## Plugin Implementation Example
+
+```scala
+// src/main/scala/example/ExamplePlugin.scala
+package example
+
+import sbt._
+import sbt.Keys._
+
+object ExamplePlugin extends AutoPlugin {
+  
+  // This plugin will load automatically
+  override def trigger = allRequirements
+  
+  // Requires JvmPlugin (standard for most plugins)
+  override def requires = plugins.JvmPlugin
+  
+  object autoImport {
+    val exampleSetting = settingKey[String]("An example setting")
+    val exampleTask = taskKey[Unit]("An example task")
+  }
+  
+  import autoImport._
+  
+  override lazy val projectSettings = Seq(
+    exampleSetting := "default value",
+    exampleTask := {
+      println(s"Example setting value: ${exampleSetting.value}")
+    }
+  )
+  
+  override lazy val buildSettings = Seq(
+    // Build-level settings
+  )
+  
+  override lazy val globalSettings = Seq(
+    // Global settings
+  )
+}
+```
+
+## Scripted Test Example
+
+```bash
+# src/sbt-test/sbt-example-plugin/simple/test
+
+# Run the example task
+> exampleTask
+
+# Check that it succeeded
+> check
+
+# Verify setting value
+> show exampleSetting
+```
+
+## Running Scripted Tests
+
+```bash
+# Run all scripted tests
+sbt scripted
+
+# Run specific test
+sbt "scripted sbt-example-plugin/simple"
+
+# Run with specific sbt version
+sbt "^ 1.5.8 scripted"
+```
+
+<Note>
+  When developing sbt plugins, use scripted tests to verify plugin behavior in real sbt builds. Scripted tests are more reliable than unit tests for plugin functionality because they test the complete integration.
+</Note>
+
+## Best Practices
+
+1. **Use AutoPlugin**: Extend `AutoPlugin` for modern plugin development
+2. **Test with Scripted**: Always add scripted tests for plugin functionality
+3. **Cross-Build**: Test your plugin against multiple sbt versions
+4. **Document Settings**: Provide clear documentation for all settings and tasks
+5. **Version Compatibility**: Clearly document which sbt versions are supported
+6. **Minimize Dependencies**: Keep plugin dependencies minimal for faster resolution
+7. **Use autoImport**: Export user-facing keys through the `autoImport` object
+
+## Publishing Plugins
+
+Publish your plugin so others can use it:
+
+```bash
+# Publish locally for testing
+sbt publishLocal
+
+# Publish to Sonatype/Maven Central
+sbt publishSigned
+sbt sonatypeBundleRelease
+
+# Or use sbt-ci-release for automated publishing
+# See: https://github.com/sbt/sbt-ci-release
+```
+
+## Migration Guide
+
+### From sbt 0.13 Plugin to sbt 1.x
+
+```scala
+// Old (sbt 0.13)
+scalaVersion := "2.10.7"
+sbtPlugin := true
+
+// New (sbt 1.x)
+scalaVersion := "2.12.18"
+sbtPlugin := true
+// pluginCrossBuild / sbtVersion automatically set to 1.5.8
+```
+
+### Supporting Multiple sbt Versions
+
+```scala
+// Cross-build for sbt 0.13 and 1.x
+crossSbtVersions := Seq("0.13.18", "1.5.8")
+
+// Conditional dependencies
+libraryDependencies ++= {
+  (pluginCrossBuild / sbtBinaryVersion).value match {
+    case "0.13" => Seq(/* 0.13 specific deps */)
+    case _ => Seq(/* 1.x specific deps */)
+  }
+}
+```
+
+<Note>
+  The SbtPlugin automatically configures the `pluginCrossBuild / sbtVersion` based on your Scala version. For most modern plugins, using Scala 2.12 with sbt 1.x is recommended.
+</Note>
+
+## Related Plugins
+
+- [JvmPlugin](/reference/plugins/jvm-plugin) - Typically required by sbt plugins
+- [IvyPlugin](/reference/plugins/ivy-plugin) - Provides dependency management
+- [CorePlugin](/reference/plugins/core-plugin) - Fundamental build infrastructure
+
+## Additional Resources
+
+- [sbt Plugin Development Guide](https://www.scala-sbt.org/1.x/docs/Plugins.html)
+- [Scripted Testing](https://www.scala-sbt.org/1.x/docs/Testing-sbt-plugins.html)
+- [Plugin Best Practices](https://www.scala-sbt.org/1.x/docs/Plugins-Best-Practices.html)
+
+## Source
+
+SbtPlugin implementation: `sbt.plugins.SbtPlugin`

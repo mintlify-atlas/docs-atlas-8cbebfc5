@@ -1,0 +1,323 @@
+---
+title: "Installing sbt"
+description: "Install sbt on macOS, Linux, or Windows. Get up and running with the interactive build tool in minutes."
+---
+
+# Installing sbt
+
+sbt runs on the JVM and requires Java 8 or later. This guide will help you install both Java and sbt on your operating system.
+
+## Prerequisites
+
+<Note>
+sbt requires **Java 8 or later**. Java 17 is recommended for the best performance and latest features.
+</Note>
+
+Check if you have Java installed:
+
+```bash
+java -version
+```
+
+If you need to install Java, we recommend:
+- [Eclipse Temurin](https://adoptium.net/) (formerly AdoptOpenJDK)
+- [Amazon Corretto](https://aws.amazon.com/corretto/)
+- [Oracle JDK](https://www.oracle.com/java/technologies/downloads/)
+
+## Installation by Platform
+
+<Tabs>
+  <Tab title="macOS">
+    ### Using Homebrew (Recommended)
+
+    The easiest way to install sbt on macOS is with [Homebrew](https://brew.sh/):
+
+    ```bash
+    brew install sbt
+    ```
+
+    This will install both sbt and its dependencies.
+
+    ### Manual Installation
+
+    1. Download the latest sbt package from [scala-sbt.org/download](https://www.scala-sbt.org/download.html)
+    2. Extract the archive:
+       ```bash
+       tar -xzf sbt-2.0.0-RC9.tgz
+       ```
+    3. Add sbt to your PATH:
+       ```bash
+       export PATH="$PATH:/path/to/sbt/bin"
+       ```
+    4. Add the export to your shell profile (`~/.zshrc` or `~/.bash_profile`) to make it permanent
+
+    <Tip>
+    On Apple Silicon (M1/M2/M3) Macs, sbt runs natively without Rosetta translation.
+    </Tip>
+  </Tab>
+
+  <Tab title="Linux">
+    ### Ubuntu / Debian
+
+    Using the official package repository:
+
+    ```bash
+    # Add repository
+    echo "deb https://repo.scala-sbt.org/scalasbt/debian all main" | sudo tee /etc/apt/sources.list.d/sbt.list
+    echo "deb https://repo.scala-sbt.org/scalasbt/debian /" | sudo tee /etc/apt/sources.list.d/sbt_old.list
+    
+    # Add GPG key
+    curl -sL "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x2EE0EA64E40A89B84B2DF73499E82A75642AC823" | sudo apt-key add
+    
+    # Update and install
+    sudo apt-get update
+    sudo apt-get install sbt
+    ```
+
+    ### Fedora / Red Hat / CentOS
+
+    ```bash
+    # Remove old Bintray repo file if present
+    sudo rm -f /etc/yum.repos.d/bintray-rpm.repo
+    
+    # Add repository  
+    curl -L https://www.scala-sbt.org/sbt-rpm.repo > sbt-rpm.repo
+    sudo mv sbt-rpm.repo /etc/yum.repos.d/
+    
+    # Install
+    sudo yum install sbt
+    ```
+
+    ### Arch Linux
+
+    ```bash
+    sudo pacman -S sbt
+    ```
+
+    ### Manual Installation (All Distributions)
+
+    1. Download the universal package:
+       ```bash
+       wget https://github.com/sbt/sbt/releases/download/v2.0.0-RC9/sbt-2.0.0-RC9.tgz
+       ```
+    2. Extract and move to /opt:
+       ```bash
+       tar -xzf sbt-2.0.0-RC9.tgz
+       sudo mv sbt /opt/
+       ```
+    3. Create a symlink:
+       ```bash
+       sudo ln -s /opt/sbt/bin/sbt /usr/local/bin/sbt
+       ```
+  </Tab>
+
+  <Tab title="Windows">
+    ### Using Scoop (Recommended)
+
+    If you have [Scoop](https://scoop.sh/) installed:
+
+    ```powershell
+    scoop install sbt
+    ```
+
+    ### Using Chocolatey
+
+    If you have [Chocolatey](https://chocolatey.org/) installed:
+
+    ```powershell
+    choco install sbt
+    ```
+
+    ### Using Windows Installer (MSI)
+
+    1. Download the MSI installer from [scala-sbt.org/download](https://www.scala-sbt.org/download.html)
+    2. Run the installer and follow the wizard
+    3. The installer will add sbt to your PATH automatically
+
+    ### Manual Installation
+
+    1. Download the ZIP package from [scala-sbt.org/download](https://www.scala-sbt.org/download.html)
+    2. Extract to a directory like `C:\sbt\`
+    3. Add `C:\sbt\bin` to your PATH:
+       - Right-click "This PC" → Properties → Advanced System Settings
+       - Click "Environment Variables"
+       - Edit the PATH variable and add `C:\sbt\bin`
+
+    <Note>
+    On Windows, you may want to increase the maximum memory for sbt by setting `SBT_OPTS`:
+    ```powershell
+    set SBT_OPTS=-Xmx2G
+    ```
+    </Note>
+  </Tab>
+</Tabs>
+
+## Verify Installation
+
+After installation, verify that sbt is working:
+
+```bash
+sbt --version
+```
+
+You should see output like:
+
+```
+sbt version in this project: 2.0.0-RC9
+sbt script version: 2.0.0-RC9
+```
+
+<Tip>
+The first time you run sbt, it will download dependencies. This may take a few minutes but only happens once.
+</Tip>
+
+## Understanding the sbt Launcher
+
+The `sbt` command you installed is actually a launcher script that:
+
+1. **Detects the project's sbt version** from `project/build.properties`
+2. **Downloads the correct version** if needed
+3. **Starts the sbt shell** with appropriate JVM settings
+
+This means you can have different sbt versions for different projects, and the launcher handles it automatically.
+
+### The sbt Launcher Script
+
+The launcher script (from `~/workspace/source/sbt`) provides several useful features:
+
+- Auto-detection of project sbt version
+- Memory configuration via `SBT_OPTS`
+- Debug mode with `-d` flag  
+- Verbose mode with `-v` flag
+- Color output (can be disabled with `--no-colors`)
+
+## Native Client (sbtn)
+
+sbt 2.x includes a native thin client called `sbtn` for faster startup:
+
+```bash
+# On macOS (Homebrew)
+brew install sbt
+
+# sbtn is included automatically
+sbtn --help
+```
+
+The native client connects to a background sbt server, giving you:
+
+- **Sub-second command execution** (no JVM startup wait)
+- **Persistent build state** across commands
+- **Lower memory usage** for quick tasks
+
+<Note>
+The native client (`sbtn`) requires a one-time build of the native image or can be installed via package managers. It's optional but recommended for the best experience.
+</Note>
+
+## Configuration
+
+### Memory Settings
+
+For large projects, you may need to increase sbt's memory:
+
+```bash
+# Set via environment variable (recommended)
+export SBT_OPTS="-Xmx2G -XX:+UseG1GC"
+
+# Or create .sbtopts in your project root
+echo "-Xmx2G" > .sbtopts
+echo "-XX:+UseG1GC" >> .sbtopts
+```
+
+### Global Settings
+
+You can configure global sbt settings in `~/.sbt/`:
+
+- `~/.sbt/1.0/global.sbt` - Global build settings
+- `~/.sbt/1.0/plugins/` - Global plugins  
+- `~/.sbt/repositories` - Custom repository configuration
+
+### Proxy Configuration
+
+If you're behind a corporate proxy:
+
+```bash
+export SBT_OPTS="-Dhttp.proxyHost=proxy.company.com -Dhttp.proxyPort=8080 -Dhttps.proxyHost=proxy.company.com -Dhttps.proxyPort=8080"
+```
+
+## Troubleshooting
+
+### Command Not Found
+
+If you get "command not found" after installation:
+
+1. Check that sbt is in your PATH: `echo $PATH`
+2. Verify the installation directory
+3. Restart your terminal to reload the PATH
+
+### Permission Denied
+
+If you get permission errors:
+
+```bash
+# Make the sbt script executable
+chmod +x /path/to/sbt/bin/sbt
+```
+
+### Java Version Issues
+
+If sbt complains about Java version:
+
+```bash
+# Check your Java version
+java -version
+
+# Set JAVA_HOME if needed
+export JAVA_HOME=$(/usr/libexec/java_home -v 17)  # macOS
+export JAVA_HOME=/usr/lib/jvm/java-17-openjdk     # Linux
+```
+
+### Download Issues
+
+If sbt fails to download dependencies:
+
+1. Check your internet connection
+2. Verify proxy settings if behind a firewall
+3. Try clearing the Ivy cache: `rm -rf ~/.ivy2/cache`
+
+## Next Steps
+
+Now that you have sbt installed, let's create your first project:
+
+<Card title="Quick Start Guide" icon="rocket" href="/quickstart">
+  Build your first "Hello World" application with sbt
+</Card>
+
+## Upgrading sbt
+
+To upgrade to a newer version of sbt:
+
+<Tabs>
+  <Tab title="macOS">
+    ```bash
+    brew upgrade sbt
+    ```
+  </Tab>
+  <Tab title="Linux (apt)">
+    ```bash
+    sudo apt-get update
+    sudo apt-get upgrade sbt
+    ```
+  </Tab>
+  <Tab title="Windows (Scoop)">
+    ```powershell
+    scoop update sbt
+    ```
+  </Tab>
+</Tabs>
+
+<Note>
+For existing projects, update the `project/build.properties` file to use the new version:
+```properties
+sbt.version=2.0.0-RC9
+```
+</Note>

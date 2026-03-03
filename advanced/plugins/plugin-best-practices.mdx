@@ -1,0 +1,532 @@
+---
+title: Plugin Best Practices
+description: Guidelines and best practices for developing sbt plugins based on sbt's own standards
+---
+
+This guide covers best practices for plugin development, drawn from sbt's own contribution guidelines and the patterns used in sbt's core plugins.
+
+## Code Organization
+
+### Naming Conventions
+
+<Steps>
+  <Step title="Use descriptive names for large scopes">
+    ```scala
+    // BAD - unclear in larger scope
+    val x = taskKey[Unit]("")
+    val s = settingKey[String]("")
+
+    // GOOD - clear purpose
+    val publishArtifacts = taskKey[Unit]("Publishes artifacts")
+    val semanticdbVersion = settingKey[String]("Version of semanticdb")
+    ```
+  </Step>
+
+  <Step title="Use short names for small scopes">
+    ```scala
+    // GOOD - small lambda scope
+    xs.map { x =>
+      val y = x - 1
+      y * y
+    }
+    ```
+  </Step>
+</Steps>
+
+### Separate Concerns
+
+Separate keys, settings, and implementation:
+
+```scala
+// Keys in separate file/trait
+trait DependencyTreeKeys {
+  val dependencyTree = taskKey[Unit]("Shows dependency tree")
+  val dependencyDot = taskKey[File]("Generates dot file")
+  val dependencyTreeIncludeScalaLibrary = settingKey[Boolean]("Include Scala lib")
+}
+
+// Plugin definition
+object DependencyTreePlugin extends AutoPlugin {
+  object autoImport extends DependencyTreeKeys
+  import autoImport._
+
+  override lazy val projectSettings = 
+    DependencyTreeSettings.coreSettings ++
+      inConfig(Compile)(DependencyTreeSettings.baseSettings)
+}
+
+// Settings in separate object
+object DependencyTreeSettings {
+  def coreSettings: Seq[Setting[_]] = Seq(/* ... */)
+  def baseSettings: Seq[Setting[_]] = Seq(/* ... */)
+}
+```
+
+## Functional Programming Practices
+
+### Prefer Pure Functions
+
+```scala
+// BAD - side effects, mutability
+var cache: Map[String, String] = Map.empty
+
+def getValue(key: String): String = {
+  if (cache.contains(key)) {
+    cache(key)
+  } else {
+    val value = expensiveComputation(key)
+    cache += (key -> value)
+    value
+  }
+}
+
+// GOOD - pure function
+def getValue(key: String, cache: Map[String, String]): (String, Map[String, String]) = {
+  cache.get(key) match {
+    case Some(value) => (value, cache)
+    case None =>
+      val value = expensiveComputation(key)
+      (value, cache + (key -> value))
+  }
+}
+```
+
+### Use Option and Either Over null and Exception
+
+```scala
+// BAD
+def findConfig(name: String): Config = {
+  val config = configs.find(_.name == name)
+  if (config == null) throw new Exception("Not found")
+  config
+}
+
+// GOOD
+def findConfig(name: String): Option[Config] = {
+  configs.find(_.name == name)
+}
+
+// GOOD - with error detail
+def findConfig(name: String): Either[String, Config] = {
+  configs.find(_.name == name)
+    .toRight(s"Configuration $name not found")
+}
+```
+
+## Scala 3 Style (for new code)
+
+### Use Fewer Braces Syntax
+
+```scala
+// BAD - old brace style
+xs.map { x =>
+  val y = x - 1
+  y * y
+}
+
+// GOOD - Scala 3 style
+xs.map: x =>
+  val y = x - 1
+  y * y
+```
+
+### Use End Markers
+
+```scala
+// BAD
+object MyPlugin {
+  def foo: Int = 1
+}
+
+// GOOD
+object MyPlugin:
+  def foo: Int = 1
+end MyPlugin
+```
+
+Example from sbt's `SbtPlugin`:
+
+```scala
+object SbtPlugin extends AutoPlugin:
+  override def requires = ScriptedPlugin
+
+  override lazy val projectSettings: Seq[Setting[?]] = Seq(
+    sbtPlugin := true,
+    pluginCrossBuild / sbtVersion := {
+      scalaBinaryVersion.value match
+        case "3"    => sbtVersion.value
+        case "2.12" => "1.5.8"
+        case "2.10" => "0.13.18"
+    },
+  )
+end SbtPlugin
+```
+
+### Avoid Infix Notation
+
+```scala
+// BAD - infix for non-symbolic methods
+a foo 1
+list contains item
+
+// GOOD - explicit method calls
+a.foo(1)
+list.contains(item)
+
+// OK - symbolic methods
+a + b
+list :+ item
+```
+
+## Modular Design
+
+Because sbt has 100+ plugins, careful design prevents breakage:
+
+### Maintain Binary Compatibility
+
+<Warning>
+Plugins published against sbt 2.0 must work on sbt 2.1. Breaking binary compatibility breaks user builds.
+</Warning>
+
+```bash
+# Always check before releasing
+sbt mimaReportBinaryIssues
+```
+
+**Rules:**
+- Never remove public methods
+- Never change method signatures
+- Add new overloads instead of changing existing methods
+- Use `@deprecated` to phase out APIs
+
+### Hide Implementation Details
+
+```scala
+// GOOD - public API
+package com.example.myplugin
+
+object MyPlugin extends AutoPlugin {
+  object autoImport {
+    val myTask = taskKey[Unit]("Public task")
+  }
+}
+
+// GOOD - implementation hidden
+package com.example.myplugin.internal
+
+private[myplugin] object MyPluginImpl {
+  def complexLogic(): Unit = ???
+}
+```
+
+### Minimize Exposed Types
+
+```scala
+// BAD - exposes external library type
+import org.somelib.ExternalType
+
+val myTask = taskKey[ExternalType]("Returns external type")
+
+// GOOD - use sbt/standard types
+val myTask = taskKey[File]("Returns file")
+val myOtherTask = taskKey[Seq[String]]("Returns strings")
+```
+
+If you change from `org.somelib` to `org.anotherlib` later, users' builds break.
+
+## Settings Best Practices
+
+### Set Defaults at Widest Scope
+
+From sbt's coding guidelines:
+
+```scala
+object MyPlugin extends AutoPlugin {
+  // GOOD - global defaults
+  override lazy val globalSettings = Seq(
+    myGlobalFlag := false,
+    myBufferLog := true
+  )
+
+  // Project-specific overrides
+  override lazy val projectSettings = Seq(
+    myTask := {
+      if (myGlobalFlag.value) /* ... */
+    }
+  )
+}
+```
+
+Example from `ScriptedPlugin`:
+
+```scala
+override lazy val globalSettings: Seq[Setting[?]] = Seq(
+  scriptedBufferLog := true,
+  scriptedLaunchOpts := Seq(),
+  scriptedKeepTempDirectory := false,
+)
+```
+
+### Avoid Capturing Machine-Specific Details
+
+```scala
+// BAD - captures absolute path
+val myTask = taskKey[String]("")
+myTask := {
+  "/Users/john/project/file.txt" // breaks on other machines
+}
+
+// GOOD - use sbt keys for paths
+myTask := {
+  (baseDirectory.value / "file.txt").getAbsolutePath
+}
+```
+
+### Avoid Time-Dependent Behavior
+
+```scala
+// BAD - task behavior changes over time
+val timestamp = System.currentTimeMillis()
+
+// GOOD - deterministic unless explicitly requested
+val buildTime = settingKey[Long]("Build timestamp")
+buildTime := System.currentTimeMillis() // user controls when this runs
+```
+
+## Documentation Standards
+
+### Use ScalaDoc for Public APIs
+
+```scala
+/**
+ * A plugin representing the ability to build a JVM project.
+ *
+ * Core tasks/keys:
+ * - `run`
+ * - `test`
+ * - `compile`
+ * - `fullClasspath`
+ * Core configurations
+ * - `Test`
+ * - `Compile`
+ */
+object JvmPlugin extends AutoPlugin {
+  // ...
+}
+```
+
+### Document Intent, Not Just Mechanics
+
+```scala
+// BAD - just repeating the code
+/** Returns true if x > 0 */
+def isPositive(x: Int): Boolean = x > 0
+
+// GOOD - explains purpose and context
+/**
+ * Checks if a dependency resolution should be retried.
+ * Returns true when the error is transient (network issues),
+ * false for permanent failures (artifact not found).
+ */
+def shouldRetry(error: ResolutionError): Boolean = ???
+```
+
+### Avoid Excessive Inline Comments
+
+From sbt guidelines: avoid inline comments that repeat what code already says.
+
+```scala
+// BAD
+val x = 5 // Set x to 5
+x + 1     // Add 1 to x
+
+// GOOD - comment explains why, not what
+// Use 5 second timeout to accommodate slow CI environments
+val timeout = 5
+```
+
+## Plugin Activation Patterns
+
+### Always-Enabled Core Plugins
+
+```scala
+object CorePlugin extends AutoPlugin {
+  // Included by default in all projects
+  override def trigger = allRequirements
+  override def requires = empty
+
+  override lazy val projectSettings = Defaults.coreDefaultSettings
+}
+```
+
+### Dependency Chain Plugins
+
+```scala
+object IvyPlugin extends AutoPlugin {
+  // Auto-enabled when CorePlugin is present
+  override def requires = CorePlugin
+  override def trigger = allRequirements
+
+  override lazy val projectSettings =
+    Classpaths.ivyPublishSettings ++ Classpaths.ivyBaseSettings
+}
+
+object JvmPlugin extends AutoPlugin {
+  // Auto-enabled when IvyPlugin is present
+  override def requires = IvyPlugin
+  override def trigger = allRequirements
+
+  override lazy val projectSettings =
+    Defaults.runnerSettings ++
+      Defaults.paths ++
+      Classpaths.jvmPublishSettings
+}
+```
+
+### Opt-In Feature Plugins
+
+```scala
+object JUnitXmlReportPlugin extends AutoPlugin {
+  // Auto-enabled if requirements met, but can be disabled
+  override def requires = JvmPlugin
+  override def trigger = allRequirements
+
+  // Users can disable:
+  // myProject.disablePlugins(JUnitXmlReportPlugin)
+}
+```
+
+## Testing Guidelines
+
+### Always Add Tests
+
+From CONTRIBUTING.md:
+
+<Note>
+For changes with small scopes prefer unit tests. For changes that require coordination with file changes and tasks, use scripted tests.
+</Note>
+
+### Scripted Test Structure
+
+```
+src/sbt-test/
+  my-plugin/           # Test group
+    simple/            # Test case
+      build.sbt
+      project/plugins.sbt
+      test             # Test script
+    complex/
+      build.sbt
+      project/plugins.sbt
+      test
+```
+
+### Test Script Example
+
+```bash
+# test file
+> myTask
+> check
+```
+
+## Import Organization
+
+```scala
+// Put all imports at the top
+import sbt._
+import sbt.Keys._
+import sbt.librarymanagement.Configuration
+import java.io.File
+
+object MyPlugin extends AutoPlugin {
+  // Plugin code
+}
+```
+
+## Error Handling
+
+### Provide Helpful Error Messages
+
+```scala
+// BAD
+if (files.isEmpty) sys.error("Error")
+
+// GOOD
+if (files.isEmpty) {
+  sys.error(
+    s"""No source files found in ${sourceDirectory.value}.
+       |Make sure your source files are in the correct directory.
+       |Expected locations:
+       |  - src/main/scala
+       |  - src/main/java
+       |""".stripMargin
+  )
+}
+```
+
+### Use Proper Logging Levels
+
+```scala
+myTask := {
+  val log = streams.value.log
+  
+  log.debug("Detailed information for debugging")
+  log.info("Normal operation messages")
+  log.warn("Potential issues that aren't errors")
+  log.error("Actual problems that need attention")
+}
+```
+
+## Performance Considerations
+
+### Use Cached Tasks
+
+Example from `SemanticdbPlugin`:
+
+```scala
+private val compileIncAndCacheSemanticdbTargetRootTask = Def.cachedTask {
+  val prev = compileIncremental.value
+  val converter = fileConverter.value
+  val targetRoot = semanticdbTargetRoot.value
+
+  val vfTargetRoot = converter.toVirtualFile(targetRoot.toPath)
+  Def.declareOutputDirectory(vfTargetRoot)
+  prev
+}
+```
+
+### Minimize Unnecessary Work
+
+```scala
+// BAD - always runs expensive computation
+myTask := {
+  val result = veryExpensiveComputation()
+  if (shouldRun.value) result else ()
+}
+
+// GOOD - skip expensive computation when not needed
+myTask := Def.taskIf {
+  if (shouldRun.value) veryExpensiveComputation()
+  else ()
+}.value
+```
+
+## Summary Checklist
+
+Before releasing your plugin:
+
+- [ ] Run `sbt mimaReportBinaryIssues` to check binary compatibility
+- [ ] Run `sbt scalafmtAll` to format code
+- [ ] Add unit tests or scripted tests
+- [ ] Document public APIs with ScalaDoc
+- [ ] Hide implementation in `.internal` packages
+- [ ] Set defaults at widest appropriate scope (global > build > project)
+- [ ] Avoid capturing machine-specific or time-specific values
+- [ ] Use `Option`/`Either` instead of `null`/exceptions
+- [ ] Organize imports at top of file
+- [ ] Add helpful error messages
+- [ ] Sign the Scala CLA if contributing to sbt itself
+
+<Tip>
+Review sbt's core plugins like `JvmPlugin`, `SemanticdbPlugin`, and `DependencyTreePlugin` as examples of well-structured plugins.
+</Tip>

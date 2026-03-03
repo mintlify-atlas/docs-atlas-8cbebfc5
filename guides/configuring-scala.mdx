@@ -1,0 +1,246 @@
+---
+title: Configuring Scala
+description: Learn how to configure Scala versions and compiler options in your sbt project
+---
+
+This guide covers how to configure Scala versions, compiler options, and switch between different Scala versions in your sbt build.
+
+## Setting the Scala Version
+
+The most basic Scala configuration is setting the version using the `scalaVersion` key:
+
+```scala build.sbt
+scalaVersion := "3.3.1"
+```
+
+For Scala 2:
+
+```scala build.sbt
+scalaVersion := "2.13.12"
+```
+
+<Note>
+The `scalaVersion` setting determines which version of the Scala compiler is used for building your project.
+</Note>
+
+## Scala Organization
+
+By default, sbt uses `org.scala-lang` as the Scala organization. This is an advanced setting for Scala language clones:
+
+```scala build.sbt
+scalaOrganization := "org.scala-lang"
+```
+
+<Warning>
+Only modify `scalaOrganization` if you're using a custom Scala distribution. Standard projects should use the default value.
+</Warning>
+
+## Configuring Compiler Options
+
+The `scalacOptions` task controls options passed to the Scala compiler:
+
+```scala build.sbt
+scalacOptions ++= Seq(
+  "-deprecation",
+  "-feature",
+  "-unchecked",
+  "-Xlint",
+  "-Ywarn-dead-code"
+)
+```
+
+### Common Scala 2 Compiler Options
+
+<CodeGroup>
+```scala Warnings
+scalacOptions ++= Seq(
+  "-deprecation",           // Emit warning for deprecations
+  "-feature",               // Emit warning for features
+  "-unchecked",             // Enable detailed unchecked warnings
+  "-Xlint",                 // Enable recommended warnings
+  "-Ywarn-dead-code",       // Warn when dead code is identified
+  "-Ywarn-numeric-widen",   // Warn when numeric types are widened
+  "-Ywarn-value-discard"    // Warn when non-Unit values are discarded
+)
+```
+
+```scala Language Features
+scalacOptions ++= Seq(
+  "-language:higherKinds",
+  "-language:implicitConversions",
+  "-language:existentials",
+  "-language:experimental.macros"
+)
+```
+
+```scala Optimization
+scalacOptions ++= Seq(
+  "-opt:l:inline",
+  "-opt-inline-from:<sources>"
+)
+```
+</CodeGroup>
+
+### Common Scala 3 Compiler Options
+
+```scala build.sbt
+scalacOptions ++= Seq(
+  "-deprecation",
+  "-feature",
+  "-explain",              // Explain errors in more detail
+  "-Xfatal-warnings",     // Fail the compilation if there are warnings
+  "-Yexplicit-nulls",     // Enable explicit null tracking
+  "-Ysafe-init"           // Ensure safe initialization
+)
+```
+
+## Scala Binary Version
+
+The `scalaBinaryVersion` is automatically derived from `scalaVersion` and describes binary compatibility:
+
+```scala
+// When scalaVersion := "2.13.12"
+// scalaBinaryVersion will be "2.13"
+
+// When scalaVersion := "3.3.1"
+// scalaBinaryVersion will be "3"
+```
+
+<Tip>
+The binary version is used by the `%%` operator for library dependencies to ensure binary compatibility.
+</Tip>
+
+## Cross-Building
+
+For projects that need to support multiple Scala versions, use `crossScalaVersions`:
+
+```scala build.sbt
+scalaVersion := "3.3.1"
+
+crossScalaVersions := Seq("2.13.12", "3.3.1")
+```
+
+Then use the `+` command prefix:
+
+```bash
+# Compile for all Scala versions
+sbt +compile
+
+# Test for all Scala versions
+sbt +test
+
+# Publish for all Scala versions
+sbt +publish
+```
+
+## Switching Scala Versions
+
+Use the `++` command to switch Scala versions:
+
+<Steps>
+  <Step title="Switch to a specific version">
+    ```bash
+    sbt "++2.13.12"
+    ```
+  </Step>
+  
+  <Step title="Switch and run a command">
+    ```bash
+    sbt "++2.13.12 compile"
+    ```
+  </Step>
+  
+  <Step title="Force a version (not in crossScalaVersions)">
+    ```bash
+    sbt "++2.12.18!"
+    ```
+    The `!` forces the version even if it's not in `crossScalaVersions`.
+  </Step>
+</Steps>
+
+## Using a Local Scala Installation
+
+You can use a local Scala installation instead of fetching from Maven:
+
+```scala build.sbt
+scalaHome := Some(file("/path/to/scala/home"))
+```
+
+Or from the command line:
+
+```bash
+sbt "++/path/to/scala/home"
+```
+
+## Scala Instance Configuration
+
+Advanced users can configure the Scala instance directly:
+
+```scala build.sbt
+autoScalaLibrary := true  // Automatically add scala-library dependency
+managedScalaInstance := true  // Use managed Scala instance
+```
+
+## Configuration Per Configuration
+
+You can set different compiler options for different configurations:
+
+```scala build.sbt
+// Different options for Test configuration
+Test / scalacOptions ++= Seq(
+  "-Xfatal-warnings",
+  "-deprecation"
+)
+
+// Different options for Compile configuration  
+Compile / scalacOptions ++= Seq(
+  "-Werror",
+  "-Wunused:all"
+)
+```
+
+## Scala 2 vs Scala 3
+
+Key differences when configuring:
+
+| Feature | Scala 2 | Scala 3 |
+|---------|---------|----------|
+| Binary Version | `2.12`, `2.13` | `3` |
+| Compiler Bridge | `scala2-sbt-bridge` | `scala3-sbt-bridge` |
+| Warning Options | `-Ywarn-*` | `-W*` |
+| Language Features | `-language:*` | Built-in or `-language:*` |
+
+<Note>
+sbt automatically handles different compiler bridges for Scala 2 and Scala 3, so you don't need to configure this manually.
+</Note>
+
+## Dynamic Scala Versions
+
+You can use dynamic version strings that sbt resolves:
+
+```scala build.sbt
+scalaVersion := "3-latest.candidate"
+// Resolves to the latest Scala 3 candidate release
+```
+
+The `scalaDynVersion` task performs this resolution.
+
+## Best Practices
+
+<Steps>
+  <Step title="Pin your Scala version">
+    Always specify an exact `scalaVersion` in your build.sbt for reproducible builds.
+  </Step>
+  
+  <Step title="Use crossScalaVersions for libraries">
+    If you're building a library, support multiple Scala versions using `crossScalaVersions`.
+  </Step>
+  
+  <Step title="Keep compiler options consistent">
+    Use the same compiler options across configurations unless you have a specific reason not to.
+  </Step>
+  
+  <Step title="Test with -Xfatal-warnings">
+    Consider making warnings fatal in CI to catch issues early.
+  </Step>
+</Steps>

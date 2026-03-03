@@ -1,0 +1,234 @@
+---
+title: "sbt Architecture"
+description: "Understanding sbt's modular architecture and core components"
+---
+
+sbt is built as a collection of highly modular components organized into separate projects. This modular architecture allows each component to evolve independently while maintaining clean boundaries between different concerns.
+
+## Core Architecture Principles
+
+sbt 2.x is split across multiple GitHub repositories:
+
+- **[sbt/io](https://github.com/sbt/io)** - File I/O utilities and abstractions
+- **[sbt/zinc](https://github.com/sbt/zinc)** - Incremental Scala compiler (see [Zinc Incremental Compiler](/advanced/zinc-incremental-compiler))
+- **[sbt/sbt](https://github.com/sbt/sbt)** - The main build tool implementation
+
+The main sbt repository contains numerous submodules that implement different aspects of the build system.
+
+## Main Modules
+
+### Core Modules
+
+<AccordionGroup>
+  <Accordion title="main" icon="cube">
+    The central module that brings together all components. Located in `main/`, it contains:
+    
+    - `Keys.scala` - Defines all built-in setting and task keys
+    - `Defaults.scala` - Default implementations of built-in tasks
+    - `Main.scala` - Entry point and main loop
+    - Build definitions and project loading
+    - Internal implementation in `sbt/internal/`
+    
+    **Key files**: `main/src/main/scala/sbt/`
+  </Accordion>
+
+  <Accordion title="tasks" icon="list-check">
+    The task execution engine that powers sbt's parallel task execution. Located in `tasks/`.
+    
+    Core components:
+    - `Execute.scala` - Task graph execution
+    - `ConcurrentRestrictions.scala` - Parallel execution controls
+    - `CompletionService.scala` - Async task completion
+    - `Result.scala` - Task result types
+    
+    This module provides the foundation for sbt's task system, including dependency tracking and concurrent execution.
+  </Accordion>
+
+  <Accordion title="main-settings" icon="sliders">
+    Settings system implementation in `main-settings/`. Handles:
+    
+    - Setting initialization and composition
+    - Scope resolution
+    - Setting delegation
+    
+    Settings are computed once at build load time, while tasks are executed on demand.
+  </Accordion>
+
+  <Accordion title="main-command" icon="terminal">
+    Command-line interface and command processing in `main-command/`. Provides:
+    
+    - Command parsing
+    - Built-in commands
+    - Tab completion infrastructure
+    - Interactive shell
+  </Accordion>
+
+  <Accordion title="main-actions" icon="play">
+    High-level build actions in `main-actions/`. Implements:
+    
+    - Compilation actions
+    - Test execution
+    - Publishing
+    - Other common build operations
+  </Accordion>
+</AccordionGroup>
+
+### Protocol and Communication
+
+<AccordionGroup>
+  <Accordion title="protocol" icon="messages">
+    Data type definitions and communication protocols in `protocol/`.
+    
+    Uses **Contraband** to define:
+    - Build Server Protocol (BSP) types in `sbt.internal.bsp`
+    - Internal protocol messages
+    - JSON serialization formats
+    
+    Contraband generates pseudo case classes that maintain binary compatibility across versions.
+    
+    **Key directory**: `protocol/src/main/contraband-scala/sbt/internal/bsp/`
+  </Accordion>
+</AccordionGroup>
+
+### Internal Utilities
+
+The `internal/` directory contains utility modules:
+
+| Module | Purpose | Location |
+|--------|---------|----------|
+| **util-core** | Core utilities and basic abstractions | `internal/util-core` |
+| **util-logging** | Logging infrastructure with multiple appenders | `internal/util-logging` |
+| **util-control** | Control flow utilities | `internal/util-control` |
+| **util-complete** | Tab completion implementation | `internal/util-complete` |
+| **util-cache** | Caching utilities | `util-cache` |
+| **util-tracking** | File change tracking | `util-tracking` |
+| **util-position** | Source position tracking | `internal/util-position` |
+| **util-relation** | Relational data structures | `internal/util-relation` |
+| **util-logic** | Logic programming utilities | `internal/util-logic` |
+| **util-scripted** | Scripted test framework | `internal/util-scripted` |
+
+### Library Management
+
+<Accordion title="Dependency Resolution" icon="download">
+  sbt uses **Coursier** (since sbt 1.3) for dependency resolution and artifact retrieval:
+  
+  - `lm-core` - Core library management abstractions
+  - `lm-coursier` - Coursier integration
+  - `lm-ivy` - Legacy Apache Ivy support
+  
+  Coursier provides faster, more reliable dependency resolution compared to the older Ivy-based system.
+</Accordion>
+
+### Zinc Integration
+
+<Accordion title="zinc-lm-integration" icon="link">
+  Bridges Zinc incremental compiler with library management in `zinc-lm-integration/`.
+  
+  Key components:
+  - `ZincComponentCompiler.scala` - Compiles compiler bridges
+  - `ZincComponentManager.scala` - Manages Zinc components
+  - `ZincLmUtil.scala` - Utility functions
+  
+  This module handles:
+  - Compiler bridge compilation and caching
+  - Scala instance creation
+  - Component resolution through library management
+  
+  See [Zinc Incremental Compiler](/advanced/zinc-incremental-compiler) for details.
+</Accordion>
+
+### Testing
+
+<AccordionGroup>
+  <Accordion title="testing" icon="flask">
+    Test framework integration in `testing/`. Provides:
+    
+    - Test framework discovery
+    - Test execution infrastructure
+    - Integration with JUnit, ScalaTest, specs2, etc.
+  </Accordion>
+
+  <Accordion title="scripted-sbt" icon="scroll">
+    Scripted testing framework for sbt plugins in `scripted-sbt/`.
+    
+    Allows plugin authors to write integration tests that:
+    - Set up test projects
+    - Run sbt commands
+    - Verify expected outcomes
+  </Accordion>
+</AccordionGroup>
+
+### Other Modules
+
+| Module | Purpose |
+|--------|----------|
+| **run** | Forked process execution for `run` tasks |
+| **worker** | Worker process for isolated task execution |
+| **core-macros** | Macro definitions used by sbt |
+| **sbt-remote-cache** | Remote build cache support |
+| **buildfile** | Build file definitions |
+| **client** | Client-server communication |
+| **sbt-app** | Application packaging |
+| **launcher-package** | sbt launcher |
+
+## Technology Stack
+
+<Note>
+  sbt uses several specialized libraries:
+  
+  - **Contraband** - Type-safe data definitions with binary compatibility
+  - **sjson-new** - JSON serialization with pluggable backends
+  - **Coursier** - Modern dependency resolution
+  - **Gigahorse** - HTTP client for remote operations
+  - **Zinc** - Incremental Scala compilation
+</Note>
+
+## Module Dependencies
+
+The module dependency structure flows roughly as:
+
+```
+internal/util-* (utilities)
+    ↓
+tasks (execution engine)
+    ↓
+main-settings, main-command, main-actions
+    ↓
+main (orchestration)
+    ↓
+sbt-app (application)
+```
+
+<Warning>
+  **Binary Compatibility**: sbt must maintain backward binary compatibility across minor releases. When contributing, always run `mimaReportBinaryIssues` to verify compatibility.
+</Warning>
+
+## Source Code Organization
+
+Each module typically follows this structure:
+
+- `src/main/scala/` - Main Scala source code
+- `src/main/scala/sbt/` - Public API
+- `src/main/scala/sbt/internal/` - Internal implementation
+- `src/test/scala/` - Unit tests
+- `src/main/contraband-scala/` - Generated code from Contraband (protocol module)
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Zinc Compiler" icon="gear" href="/advanced/zinc-incremental-compiler">
+    Learn about sbt's incremental compilation engine
+  </Card>
+  
+  <Card title="Build Server Protocol" icon="server" href="/advanced/build-server-protocol">
+    Understand BSP integration in sbt
+  </Card>
+  
+  <Card title="Contributing" icon="code-branch" href="/advanced/contributing">
+    Guidelines for contributing to sbt
+  </Card>
+  
+  <Card title="Tech Stack" icon="layer-group" href="https://github.com/sbt/sbt/blob/develop/contributing-docs/07_tech_stack.md">
+    Deep dive into libraries and tooling
+  </Card>
+</CardGroup>

@@ -1,0 +1,513 @@
+---
+title: "Build Definition API"
+description: "Build definition concepts, structure, and lifecycle in sbt"
+---
+
+# Build Definition API
+
+A build definition in sbt describes how to compile, test, package, and publish your project. This page documents the core concepts and APIs for defining builds.
+
+## Build Definition Basics
+
+### What is a Build Definition?
+
+A build definition is a set of projects defined in your build files (typically `build.sbt` and files in the `project/` directory). Each project is configured with:
+
+- **Settings** - Immutable values computed once when the build loads
+- **Tasks** - Executable units of work that can depend on other tasks
+- **Commands** - Interactive operations in the sbt shell
+
+### Build Files
+
+#### build.sbt
+
+The primary build definition file using sbt's DSL:
+
+```scala
+// build.sbt
+name := "my-project"
+version := "1.0.0"
+scalaVersion := "3.3.1"
+
+libraryDependencies += "org.typelevel" %% "cats-core" % "2.10.0"
+```
+
+#### project/build.properties
+
+Specifies the sbt version:
+
+```properties
+sbt.version=1.9.7
+```
+
+#### project/*.scala
+
+Scala files for complex build logic:
+
+```scala
+// project/CustomTasks.scala
+import sbt._
+import sbt.Keys._
+
+object CustomTasks {
+  lazy val generateSources = taskKey[Seq[File]]("Generate source files")
+  
+  lazy val settings = Seq(
+    generateSources := {
+      val dir = (Compile / sourceManaged).value
+      val file = dir / "Generated.scala"
+      IO.write(file, "object Generated { val version = \"1.0\" }")
+      Seq(file)
+    },
+    Compile / sourceGenerators += generateSources.taskValue
+  )
+}
+```
+
+## Settings and Tasks
+
+### SettingKey
+
+Immutable values evaluated once at build load time.
+
+```scala
+val mySettings = settingKey[String]("A custom setting")
+
+lazy val root = project
+  .settings(
+    mySettings := "hello",
+    // Settings can reference other settings
+    name := mySettings.value + "-project"
+  )
+```
+
+**Characteristics:**
+- Evaluated once when the build loads
+- Cannot depend on tasks
+- Used for configuration values
+
+### TaskKey
+
+Executable units of work evaluated on demand.
+
+```scala
+val myTask = taskKey[Int]("A custom task")
+
+lazy val root = project
+  .settings(
+    myTask := {
+      println("Running myTask")
+      1 + 1
+    },
+    // Tasks can depend on other tasks
+    Compile / compile := {
+      val _ = myTask.value
+      (Compile / compile).value
+    }
+  )
+```
+
+**Characteristics:**
+- Executed on demand
+- Can depend on settings and other tasks  
+- May produce side effects
+- Results can be cached
+
+### InputKey
+
+Tasks that accept command-line arguments.
+
+```scala
+val greet = inputKey[Unit]("Greet someone")
+
+lazy val root = project
+  .settings(
+    greet := {
+      val args = Def.spaceDelimited("<name>").parsed
+      args.foreach(name => println(s"Hello, $name!"))
+    }
+  )
+```
+
+**Usage:**
+```bash
+sbt "greet Alice Bob"
+```
+
+## Scopes
+
+Settings and tasks can be scoped by four axes:
+
+### Project Axis
+
+```scala
+lazy val core = project
+lazy val app = project
+
+lazy val root = project
+  .settings(
+    // Scoped to a specific project
+    core / name := "my-core",
+    app / name := "my-app"
+  )
+```
+
+### Configuration Axis
+
+```scala
+lazy val root = project
+  .settings(
+    // Different settings per configuration
+    Compile / scalacOptions += "-Xlint",
+    Test / scalacOptions += "-Xlint",
+    Test / fork := true
+  )
+```
+
+**Common Configurations:**
+- `Compile` - Main source compilation
+- `Test` - Test source compilation
+- `Runtime` - Runtime classpath
+- `Provided` - Compile-time only dependencies
+
+### Task Axis
+
+```scala
+lazy val root = project
+  .settings(
+    // Scoped to a specific task
+    run / fork := true,
+    run / javaOptions += "-Xmx2G",
+    
+    test / fork := false
+  )
+```
+
+### Full Scopes
+
+```scala
+// Project / Configuration / Task / Key
+core / Compile / compile / scalacOptions
+app / Test / test / parallelExecution
+```
+
+## Build Structure
+
+### BuildStructure
+
+The complete build structure containing all projects and settings.
+
+```scala
+val structure: BuildStructure = Project.structure(state)
+```
+
+<ResponseField name="BuildStructure" type="case class">
+  Contains the entire build definition including units, data, settings, and indexes.
+</ResponseField>
+
+**Key Fields:**
+- `units: Map[URI, LoadedBuildUnit]` - All builds loaded
+- `data: Settings[Scope]` - All setting values  
+- `settings: Seq[Setting[?]]` - All setting definitions
+- `index: KeyIndex` - Index for key lookup
+
+### LoadedBuild
+
+Represents a loaded build with all its projects.
+
+```scala
+val loaded: LoadedBuild = structure.units(structure.root)
+```
+
+<ResponseField name="LoadedBuild" type="case class">
+  A single build (root or external dependency build).
+</ResponseField>
+
+**Key Fields:**
+- `root: URI` - Build root URI
+- `units: Map[URI, LoadedBuildUnit]` - Build units
+- `allProjectRefs: Seq[ProjectRef]` - All project references
+
+### ResolvedProject
+
+A fully resolved project with all plugins applied.
+
+```scala
+val project: ResolvedProject = Project.getProject(projectRef, structure).get
+```
+
+<ResponseField name="ResolvedProject" type="trait">
+  Resolved project definition with auto-plugins applied.
+</ResponseField>
+
+**Key Fields:**
+- `id: String` - Project identifier
+- `base: File` - Base directory
+- `settings: Seq[Setting[?]]` - Project settings
+- `configurations: Seq[Configuration]` - Available configurations
+- `dependencies: Seq[ClasspathDep[ProjectRef]]` - Project dependencies
+- `aggregate: Seq[ProjectRef]` - Aggregated projects
+- `autoPlugins: Seq[AutoPlugin]` - Enabled plugins
+
+## Build Lifecycle
+
+### Loading
+
+1. **Parse build files** - Read `build.sbt` and `project/*.scala`
+2. **Apply plugins** - Determine and enable AutoPlugins
+3. **Evaluate settings** - Compute all setting values
+4. **Build index** - Create search indexes for keys and scopes
+5. **Run onLoad hooks** - Execute initialization code
+
+### State Transformations
+
+```scala
+// onLoad hook
+onLoad in Global := { (onLoad in Global).value andThen { state =>
+  println("Build loaded!")
+  state
+}}
+
+// onUnload hook  
+onUnload in Global := { (onUnload in Global).value andThen { state =>
+  println("Build unloading...")
+  state
+}}
+```
+
+### Task Execution
+
+1. **Dependency resolution** - Build task execution graph
+2. **Topological sort** - Determine execution order
+3. **Parallel execution** - Run independent tasks concurrently
+4. **Caching** - Skip tasks if inputs haven't changed
+
+## Configurations
+
+### Built-in Configurations
+
+<ResponseField name="Compile" type="Configuration">
+  Main source code compilation and packaging.
+</ResponseField>
+
+<ResponseField name="Test" type="Configuration">
+  Test source code compilation and execution.
+</ResponseField>
+
+<ResponseField name="Runtime" type="Configuration">
+  Runtime dependencies (included in packaged artifacts).
+</ResponseField>
+
+<ResponseField name="Provided" type="Configuration">
+  Compile-time dependencies not included in runtime.
+</ResponseField>
+
+### Custom Configurations
+
+```scala
+val IntegrationTest = config("it") extend Test
+
+lazy val root = project
+  .configs(IntegrationTest)
+  .settings(
+    inConfig(IntegrationTest)(Defaults.testSettings),
+    IntegrationTest / fork := true,
+    IntegrationTest / parallelExecution := false
+  )
+```
+
+## Multi-Project Builds
+
+### Defining Multiple Projects
+
+```scala
+lazy val common = (project in file("common"))
+  .settings(
+    name := "common",
+    libraryDependencies += "org.typelevel" %% "cats-core" % "2.10.0"
+  )
+
+lazy val core = (project in file("core"))
+  .settings(
+    name := "core"
+  )
+  .dependsOn(common)
+
+lazy val api = (project in file("api"))  
+  .settings(
+    name := "api"
+  )
+  .dependsOn(core)
+
+lazy val root = (project in file("."))
+  .settings(
+    name := "my-project"
+  )
+  .aggregate(common, core, api)
+```
+
+### Dependency Types
+
+#### dependsOn
+
+Compilation and runtime dependency:
+
+```scala
+api.dependsOn(core)
+// Equivalent to:
+api.dependsOn(core % "compile->compile")
+```
+
+#### aggregate
+
+Task aggregation only (no classpath dependency):
+
+```scala
+root.aggregate(core, api)
+// Running `root/compile` also runs `core/compile` and `api/compile`
+```
+
+#### Configuration Mapping
+
+```scala
+// Test depends on both compile and test classes of core
+api.dependsOn(core % "compile->compile;test->test")
+
+// Test-only dependency
+api.dependsOn(testUtils % "test->compile")
+
+// Use test classes in main code (rare)
+api.dependsOn(testkit % "compile->test")
+```
+
+## Build Information Access
+
+### Accessing Build State
+
+```scala
+val printInfo = taskKey[Unit]("Print build info")
+
+printInfo := {
+  val extracted = Project.extract(state.value)
+  val currentProj = extracted.currentRef
+  val buildStruct = extracted.structure
+  
+  println(s"Current project: ${currentProj.project}")
+  println(s"All projects: ${buildStruct.allProjectRefs.map(_.project)}")
+}
+```
+
+### Querying Settings
+
+```scala
+val querySettings = taskKey[Unit]("Query settings")
+
+querySettings := {
+  val extracted = Project.extract(state.value)
+  
+  // Get a setting value
+  val projName = extracted.get(name)
+  println(s"Project name: $projName")
+  
+  // Get a task value (runs the task)
+  val compileResult = extracted.runTask(Compile / compile, state.value)
+}
+```
+
+## Advanced Build Techniques
+
+### Dynamic Settings
+
+```scala
+val dynamicSettings = Def.settings(
+  name := {
+    if (scalaVersion.value.startsWith("3"))
+      "my-project-scala3"
+    else
+      "my-project-scala2"
+  }
+)
+```
+
+### Conditional Compilation
+
+```scala
+scalacOptions ++= {
+  CrossVersion.partialVersion(scalaVersion.value) match {
+    case Some((2, 13)) => Seq("-Xsource:3")
+    case Some((3, _))  => Seq("-Ykind-projector")
+    case _             => Seq.empty
+  }
+}
+```
+
+### Build Matrix
+
+```scala
+val scala213 = "2.13.12"
+val scala3 = "3.3.1"
+
+lazy val core = projectMatrix.in(file("core"))
+  .settings(name := "core")
+  .jvmPlatform(scalaVersions = Seq(scala213, scala3))
+  .jsPlatform(scalaVersions = Seq(scala213, scala3))
+```
+
+## Example: Complete Build
+
+```scala
+import sbt._
+import sbt.Keys._
+
+ThisBuild / organization := "com.example"
+ThisBuild / version := "1.0.0"
+ThisBuild / scalaVersion := "3.3.1"
+
+val commonSettings = Seq(
+  scalacOptions ++= Seq(
+    "-deprecation",
+    "-feature",
+    "-Xfatal-warnings"
+  ),
+  libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.17" % Test
+)
+
+lazy val core = (project in file("core"))
+  .settings(
+    commonSettings,
+    name := "my-core",
+    libraryDependencies ++= Seq(
+      "org.typelevel" %% "cats-core" % "2.10.0",
+      "org.typelevel" %% "cats-effect" % "3.5.2"
+    )
+  )
+
+lazy val api = (project in file("api"))
+  .settings(
+    commonSettings,
+    name := "my-api",
+    libraryDependencies ++= Seq(
+      "com.typesafe.akka" %% "akka-http" % "10.5.3",
+      "com.typesafe.akka" %% "akka-stream" % "2.8.5"
+    )
+  )
+  .dependsOn(core)
+
+lazy val app = (project in file("app"))
+  .settings(
+    commonSettings,
+    name := "my-app",
+    Compile / mainClass := Some("com.example.Main"),
+    run / fork := true,
+    run / javaOptions += "-Xmx2G"
+  )
+  .dependsOn(api)
+
+lazy val root = (project in file("."))
+  .settings(
+    commonSettings,
+    name := "my-project",
+    publish / skip := true
+  )
+  .aggregate(core, api, app)
+```

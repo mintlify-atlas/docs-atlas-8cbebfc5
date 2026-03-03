@@ -1,0 +1,331 @@
+---
+title: Configurations
+description: Understanding sbt configurations including Compile, Test, Runtime, and custom configurations
+---
+
+Configurations in sbt are a way to organize and scope settings, tasks, and dependencies. They're similar to Maven scopes but more flexible.
+
+## What Are Configurations?
+
+A **configuration** is a named grouping of settings and dependencies. Each configuration can:
+
+- Define its own set of source directories
+- Have separate classpaths
+- Extend other configurations to inherit their settings
+- Be public (visible to downstream projects) or private
+
+## Built-in Configurations
+
+sbt provides several predefined configurations based on Maven conventions:
+
+### Compile
+
+<ParamField path="Compile" type="Configuration">
+  The main configuration for production code and dependencies.
+  
+  **Characteristics:**
+  - Sources: `src/main/scala`, `src/main/java`
+  - Resources: `src/main/resources`
+  - Classes output: `target/scala-<version>/classes`
+  - Public: Yes
+  - Extends: None
+  
+  ```scala
+  // Add a compile-time dependency
+  libraryDependencies += "org.typelevel" %% "cats-core" % "2.10.0"
+  
+  // Scope a setting to Compile
+  Compile / sourceDirectory := baseDirectory.value / "sources"
+  ```
+</ParamField>
+
+### Test
+
+<ParamField path="Test" type="Configuration">
+  Configuration for test code and test-only dependencies.
+  
+  **Characteristics:**
+  - Sources: `src/test/scala`, `src/test/java`
+  - Resources: `src/test/resources`
+  - Classes output: `target/scala-<version>/test-classes`
+  - Public: No
+  - Extends: `Runtime` (includes all compile and runtime dependencies)
+  
+  ```scala
+  // Add a test-only dependency
+  libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.17" % Test
+  
+  // Scope a setting to Test
+  Test / fork := true
+  Test / javaOptions += "-Xmx2G"
+  ```
+</ParamField>
+
+### Runtime
+
+<ParamField path="Runtime" type="Configuration">
+  Dependencies needed at runtime but not for compilation.
+  
+  **Characteristics:**
+  - No dedicated source directories
+  - Public: Yes
+  - Extends: `Compile`
+  - Transitive: Yes
+  
+  ```scala
+  // Runtime-only dependency (not needed for compilation)
+  libraryDependencies += "ch.qos.logback" % "logback-classic" % "1.4.11" % Runtime
+  ```
+</ParamField>
+
+### Provided
+
+<ParamField path="Provided" type="Configuration">
+  Dependencies provided by the runtime environment (like servlet APIs provided by a container).
+  
+  **Characteristics:**
+  - Available for compilation
+  - Not included in packaged artifacts
+  - Public: Yes
+  - Extends: None
+  - Transitive: Yes
+  
+  ```scala
+  // Provided dependency (available at compile time, not packaged)
+  libraryDependencies += "javax.servlet" % "javax.servlet-api" % "4.0.1" % Provided
+  ```
+</ParamField>
+
+### Optional
+
+<ParamField path="Optional" type="Configuration">
+  Optional dependencies that consumers can choose to include.
+  
+  **Characteristics:**
+  - Public: Yes
+  - Extends: None
+  - Transitive: Yes
+  
+  ```scala
+  libraryDependencies += "com.example" %% "plugin" % "1.0" % Optional
+  ```
+</ParamField>
+
+## Configuration Hierarchy
+
+Configurations can extend other configurations, creating an inheritance hierarchy:
+
+```
+Compile
+  ↓
+Runtime (extends Compile)
+  ↓
+Test (extends Runtime)
+```
+
+This means:
+- `Runtime` has access to all `Compile` dependencies and settings
+- `Test` has access to all `Runtime` and `Compile` dependencies and settings
+
+## Scoping to Configurations
+
+### Syntax
+
+Use the `/` operator to scope settings and tasks to a configuration:
+
+```scala
+// Scope to a configuration
+Test / sourceDirectory := baseDirectory.value / "test-src"
+
+// Scope to configuration and task
+Test / compile / scalacOptions += "-Xlog-free-terms"
+
+// Query scoped values
+val testSources = (Test / sources).value
+```
+
+### Common Configuration-Scoped Settings
+
+```scala
+// Different source directories per configuration
+Compile / scalaSource := baseDirectory.value / "src"
+Test / scalaSource := baseDirectory.value / "test"
+
+// Different compiler options
+Compile / scalacOptions += "-optimize"
+Test / scalacOptions += "-Ylog-classpath"
+
+// Different JVM options
+Test / fork := true
+Test / javaOptions += "-Xmx4G"
+```
+
+## IntegrationTest Configuration
+
+For integration tests, you can define a custom configuration:
+
+```scala
+// In project/plugins.sbt or build.sbt
+lazy val IntegrationTest = config("it") extend(Runtime)
+
+// In build.sbt
+lazy val root = (project in file("."))
+  .configs(IntegrationTest)
+  .settings(
+    inConfig(IntegrationTest)(Defaults.testSettings),
+    IntegrationTest / scalaSource := baseDirectory.value / "src/it/scala",
+    libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.17" % IntegrationTest
+  )
+```
+
+Then run integration tests:
+
+```bash
+sbt it:test
+```
+
+## Custom Configurations
+
+You can create custom configurations for specialized needs:
+
+```scala
+// Define a custom configuration
+lazy val Benchmark = config("bench") extend(Compile)
+
+lazy val root = (project in file("."))
+  .configs(Benchmark)
+  .settings(
+    inConfig(Benchmark)(Defaults.testSettings),
+    Benchmark / scalaSource := baseDirectory.value / "src/bench/scala",
+    libraryDependencies += "org.openjdk.jmh" % "jmh-core" % "1.37" % Benchmark
+  )
+```
+
+<Note>
+  Custom configuration names should start with an uppercase letter by convention.
+</Note>
+
+## Internal Configurations
+
+sbt maintains internal configurations for managing classpaths:
+
+| Configuration | Purpose |
+|---------------|----------|
+| `CompileInternal` | Internal classpath for `Compile` including optional and provided dependencies |
+| `RuntimeInternal` | Internal classpath for `Runtime` including optional dependencies |
+| `TestInternal` | Internal classpath for `Test` including all dependencies |
+
+These are used internally by sbt and generally don't need to be referenced directly.
+
+## Special Configurations
+
+### CompilerPlugin
+
+<ParamField path="CompilerPlugin" type="Configuration">
+  Configuration for Scala compiler plugins.
+  
+  ```scala
+  libraryDependencies += compilerPlugin(
+    "org.typelevel" %% "kind-projector" % "0.13.2" cross CrossVersion.full
+  )
+  ```
+</ParamField>
+
+### ScalaTool, ScalaDocTool, ScalaReplTool
+
+Hidden configurations used internally for Scala infrastructure:
+
+- `ScalaTool`: Scala compiler and library
+- `ScalaDocTool`: Scaladoc generator
+- `ScalaReplTool`: Scala REPL
+
+## Configuration Best Practices
+
+### 1. Use Standard Configurations
+
+Stick to standard configurations (`Compile`, `Test`, `Runtime`, `Provided`) when possible:
+
+```scala
+// Good: Uses standard Test configuration
+libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.17" % Test
+
+// Avoid: Creating unnecessary custom configurations
+lazy val UnitTest = config("unit") extend(Test)  // Usually not needed
+```
+
+### 2. Scope Settings Appropriately
+
+```scala
+// Scope fork to Test only if needed
+Test / fork := true  // Good: Only affects tests
+
+// Avoid:
+fork := true  // Affects all configurations
+```
+
+### 3. Extend Configurations Carefully
+
+When creating custom configurations, extend the appropriate base:
+
+```scala
+// Integration tests should extend Runtime
+lazy val IntegrationTest = config("it") extend(Runtime)
+
+// Benchmarks might extend Compile
+lazy val Benchmark = config("bench") extend(Compile)
+```
+
+### 4. Use inConfig for Configuration Settings
+
+```scala
+lazy val IntegrationTest = config("it") extend(Runtime)
+
+lazy val root = (project in file("."))
+  .configs(IntegrationTest)
+  .settings(
+    // Apply default test settings to IntegrationTest
+    inConfig(IntegrationTest)(Defaults.testSettings),
+    
+    // Add custom settings
+    IntegrationTest / parallelExecution := false
+  )
+```
+
+## Configuration Classpath
+
+Each configuration maintains its own classpath:
+
+```scala
+// Compile classpath: compile dependencies only
+Compile / fullClasspath
+
+// Test classpath: compile + runtime + test dependencies
+Test / fullClasspath
+
+// Runtime classpath: compile + runtime dependencies
+Runtime / fullClasspath
+```
+
+<Warning>
+  Dependencies in `Test` configuration are not available to downstream projects, even if they depend on your project's tests.
+</Warning>
+
+## Dependency Configuration Mapping
+
+You can map configurations when declaring dependencies:
+
+```scala
+// Map Test configuration to Compile configuration of dependency
+libraryDependencies += 
+  "com.example" %% "test-utils" % "1.0" % "test->compile"
+
+// Multiple mappings
+libraryDependencies += 
+  "com.example" %% "utils" % "1.0" % "compile->compile;test->test"
+```
+
+## See Also
+
+- [Settings and Tasks](/reference/settings-and-tasks) - Working with scoped settings
+- [Directory Structure](/reference/directory-structure) - Configuration source directories
+- [Command Line](/reference/command-line) - Running tasks in specific configurations

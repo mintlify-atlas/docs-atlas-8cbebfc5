@@ -1,0 +1,274 @@
+---
+title: Task Graph and Execution Model
+description: Understanding sbt's task dependency graph and execution engine
+---
+
+This guide explains how sbt's task execution engine works, including task dependencies, parallel execution, and the underlying execution model.
+
+## Task Dependencies
+
+Every task in sbt can depend on other tasks. When you run a task, sbt automatically:
+
+1. Builds a dependency graph of all required tasks
+2. Determines which tasks can run in parallel
+3. Executes tasks in topological order
+4. Caches results to avoid redundant work
+
+### How Dependencies Are Tracked
+
+The `Execute` class in `tasks/src/main/scala/sbt/Execute.scala` manages the task execution graph:
+
+```scala
+private val forward = taskMap[IDSet[TaskId[?]]]
+private val reverse = taskMap[Iterable[TaskId[?]]]
+private val callers = taskPMap[[X] =>> IDSet[TaskId[X]]]
+private val state = taskMap[State]
+```
+
+- **forward**: Maps each task to its dependencies (tasks it depends on)
+- **reverse**: Maps each task to its dependents (tasks that depend on it)
+- **callers**: Tracks dynamic task calls during execution
+- **state**: Tracks execution state (Pending, Running, Calling, Done)
+
+### Task States
+
+During execution, each task transitions through states:
+
+```scala
+private enum State {
+  case Pending   // Added to graph, waiting for dependencies
+  case Running   // Dependencies complete, currently executing
+  case Calling   // Dynamically calling another task
+  case Done      // Execution complete
+}
+```
+
+<Note>
+The `Calling` state is used for dynamic task dependencies that are discovered during execution, not declared statically.
+</Note>
+
+## Execution Flow
+
+### 1. Task Registration
+
+When a task is added to the execution graph:
+
+```scala
+def addNew(node: TaskId[?])(using strategy: CompletionService): Unit = {
+  val v = register(node)
+  val deps = dependencies(v) ++ runBefore(node)
+  val active = IDSet[TaskId[?]](deps filter notDone)
+  
+  if (active.isEmpty) ready(node)
+  else {
+    forward(node) = active
+    for (a <- active) {
+      addChecked(a)
+      addReverse(a, node)
+    }
+  }
+}
+```
+
+This process:
+- Registers the task in the execution system
+- Identifies all dependencies
+- If dependencies are complete, marks task as ready
+- Otherwise, adds forward/reverse links in the dependency graph
+
+### 2. Task Execution
+
+When all dependencies complete, a task becomes ready:
+
+```scala
+def ready(node: TaskId[?])(using strategy: CompletionService): Unit = {
+  state(node) = Running
+  progress.afterReady(node)
+  submit(node)
+}
+```
+
+The task is submitted to the `CompletionService` for execution.
+
+### 3. Work Computation
+
+The actual task computation happens in the `work` method:
+
+```scala
+def work[A](node: TaskId[A], f: => Either[TaskId[A], A]): Completed = {
+  progress.beforeWork(node)
+  val rawResult = wideConvert(f).left.map {
+    case i: Incomplete => if (config.overwriteNode(i)) i.copy(node = Some(node)) else i
+    case e => Incomplete(Some(node), Incomplete.Error, directCause = Some(e))
+  }
+  val result = rewrap(rawResult)
+  progress.afterWork(node, result)
+  completed {
+    result match {
+      case Right(v) => retire(node, v)
+      case Left(target) => call(node, target)
+    }
+  }
+}
+```
+
+The result can be:
+- `Right(v)`: Task completed successfully with value `v`
+- `Left(target)`: Task needs to call another task dynamically
+
+### 4. Task Completion
+
+When a task completes, it notifies its dependents:
+
+```scala
+def retire[A](node: TaskId[A], result: Result[A]): Unit = {
+  results(node) = result
+  state(node) = Done
+  progress.afterCompleted(node, result)
+  remove(reverse, node).foreach(dep => notifyDone(node, dep))
+  // Handle callers and triggered tasks...
+}
+```
+
+## Parallel Execution
+
+### Concurrency Control
+
+From `EvaluateTask.scala`, sbt uses `Tags` to control parallel execution:
+
+```scala
+def defaultRestrictions(maxWorkers: Int) = Tags.limitAll(maxWorkers) :: Nil
+
+def maxWorkers(extracted: Extracted, structure: BuildStructure): Int =
+  if (getSetting(Keys.parallelExecution, true, extracted, structure))
+    SystemProcessors
+  else
+    1
+```
+
+<Tip>
+By default, sbt runs up to `Runtime.getRuntime.availableProcessors` tasks in parallel. You can control this with the `parallelExecution` setting or `concurrentRestrictions`.
+</Tip>
+
+### Task Tags
+
+Tasks can be tagged to control resource usage:
+
+```scala
+// Example: Limit test execution
+concurrentRestrictions := Seq(
+  Tags.limit(Tags.Test, 1),  // Only 1 test task at a time
+  Tags.limitAll(4)            // Max 4 tasks total
+)
+```
+
+## Cycle Detection
+
+The execution engine detects cyclic dependencies:
+
+```scala
+def cycleCheck(node: TaskId[?], target: TaskId[?]): Unit = {
+  if (node eq target) cyclic(node, target, "Cannot call self")
+  val all = IDSet.create[TaskId[?]]
+  def allCallers(n: TaskId[?]): Unit = all.process(n)(()) {
+    callers.get(n).toList.flatten.foreach(allCallers)
+  }
+  allCallers(node)
+  if all.contains(target) then cyclic(node, target, "Cyclic reference")
+}
+```
+
+<Warning>
+Cyclic task dependencies will cause a runtime error. sbt performs cycle checking during execution when `checkCycles` is enabled in the `EvaluateTaskConfig`.
+</Warning>
+
+## Triggers and Hooks
+
+The `Triggers` class manages additional task relationships:
+
+```scala
+final class Triggers(
+  val runBefore: collection.Map[TaskId[?], Seq[TaskId[?]]],
+  val injectFor: collection.Map[TaskId[?], Seq[TaskId[?]]],
+  val onComplete: RMap[TaskId, Result] => RMap[TaskId, Result],
+)
+```
+
+- **runBefore**: Tasks that must run before a given task
+- **injectFor**: Tasks to trigger after a task completes (via `triggeredBy` attribute)
+- **onComplete**: Transformation to apply to all results
+
+### Example: Triggered Tasks
+
+```scala
+val generateSources = taskKey[Seq[File]]("Generate sources")
+val compile = taskKey[Unit]("Compile")
+
+compile := {
+  // Compilation logic
+}.triggeredBy(generateSources)
+```
+
+When `generateSources` completes, `compile` is automatically added to the execution graph.
+
+## Progress Reporting
+
+The `ExecuteProgress` trait provides hooks for monitoring execution:
+
+```scala
+trait ExecuteProgress {
+  def initial(): Unit
+  def afterRegistered(task: TaskId[?], allDeps: Iterable[TaskId[?]], 
+                     pendingDeps: Iterable[TaskId[?]]): Unit
+  def afterReady(task: TaskId[?]): Unit
+  def beforeWork(task: TaskId[?]): Unit
+  def afterWork[A](task: TaskId[A], result: Either[TaskId[A], Result[A]]): Unit
+  def afterCompleted[A](task: TaskId[A], result: Result[A]): Unit
+  def afterAllCompleted(results: RMap[TaskId, Result]): Unit
+  def stop(): Unit
+}
+```
+
+This enables features like:
+- Progress bars
+- Task timing reports
+- Custom logging
+
+## Main Execution Entry Point
+
+From `EvaluateTask.scala:483`, the main task execution method:
+
+```scala
+def runTask[T](
+  root: Task[T],
+  state: State,
+  streams: Streams,
+  triggers: Triggers,
+  config: EvaluateTaskConfig
+)(using taskToNode: NodeView): (State, Result[T]) = {
+  val tags = tagged(Tags.predicate(config.restrictions))
+  val (service, shutdownThreads) = 
+    cancellableCompletionService(tags, ...)
+  
+  val x = new Execute(
+    Execute.config(config.checkCycles, overwriteNode),
+    triggers,
+    config.progressReporter
+  )
+  val results = x.runKeep(root)
+  // Process results and transform state...
+}
+```
+
+## Best Practices
+
+1. **Avoid Dynamic Dependencies**: Static dependencies (using `.value`) are more efficient than dynamic calls
+2. **Use Appropriate Tags**: Tag resource-intensive tasks to prevent resource exhaustion
+3. **Keep Tasks Pure**: Tasks should be deterministic and not have external side effects
+4. **Handle Failures Gracefully**: Use `Result[A]` properly to communicate failures
+
+## See Also
+
+- [Custom Settings and Tasks](/advanced/custom-settings)
+- [Build State Management](/advanced/build-state)
+- [Command Definition](/advanced/commands)

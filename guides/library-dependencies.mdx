@@ -1,0 +1,350 @@
+---
+title: Library Dependencies
+description: Learn how to declare and manage library dependencies in sbt projects
+---
+
+This guide explains how to declare library dependencies, understand dependency operators, configure resolvers, and manage dependency conflicts in sbt.
+
+## Declaring Dependencies
+
+Dependencies are declared using the `libraryDependencies` setting:
+
+```scala build.sbt
+libraryDependencies += "org.typelevel" %% "cats-core" % "2.10.0"
+```
+
+<Note>
+The `+=` operator adds a single dependency, while `++=` adds multiple dependencies.
+</Note>
+
+## Dependency Operators
+
+sbt provides several operators for declaring dependencies:
+
+### The %% Operator (Scala Binary Version)
+
+The `%%` operator automatically appends the Scala binary version:
+
+```scala build.sbt
+// With scalaVersion := "2.13.12"
+libraryDependencies += "org.typelevel" %% "cats-core" % "2.10.0"
+// Resolves to: org.typelevel:cats-core_2.13:2.10.0
+
+// With scalaVersion := "3.3.1"
+libraryDependencies += "org.typelevel" %% "cats-core" % "2.10.0"  
+// Resolves to: org.typelevel:cats-core_3:2.10.0
+```
+
+<Tip>
+Use `%%` for Scala libraries that are compiled for specific Scala versions. This ensures binary compatibility.
+</Tip>
+
+### The % Operator (No Version Suffix)
+
+The `%` operator uses the exact artifact name without appending Scala version:
+
+```scala build.sbt
+libraryDependencies += "com.google.guava" % "guava" % "32.1.3-jre"
+// Resolves to: com.google.guava:guava:32.1.3-jre
+```
+
+<Note>
+Use `%` for Java libraries or when you need exact artifact control.
+</Note>
+
+## Multiple Dependencies
+
+Declare multiple dependencies using `++=`:
+
+<CodeGroup>
+```scala Sequential
+libraryDependencies ++= Seq(
+  "org.typelevel" %% "cats-core" % "2.10.0",
+  "org.typelevel" %% "cats-effect" % "3.5.2",
+  "co.fs2" %% "fs2-core" % "3.9.3"
+)
+```
+
+```scala Test Dependencies
+libraryDependencies ++= Seq(
+  "org.scalatest" %% "scalatest" % "3.2.17" % Test,
+  "org.scalatestplus" %% "scalacheck-1-17" % "3.2.17.0" % Test,
+  "org.scalacheck" %% "scalacheck" % "1.17.0" % Test
+)
+```
+</CodeGroup>
+
+## Configuration Scoping
+
+Dependencies can be scoped to specific configurations:
+
+```scala build.sbt
+libraryDependencies ++= Seq(
+  "org.scalatest" %% "scalatest" % "3.2.17" % Test,
+  "ch.qos.logback" % "logback-classic" % "1.4.11" % Runtime,
+  "org.scala-lang" % "scala-compiler" % scalaVersion.value % Provided
+)
+```
+
+### Common Configurations
+
+| Configuration | Description | Classpath |
+|---------------|-------------|----------|
+| `Compile` | Default, production code | Compile + Runtime |
+| `Test` | Test code only | Test classpath only |
+| `Runtime` | Runtime dependencies | Runtime classpath |
+| `Provided` | Provided by runtime environment | Compile only |
+| `Optional` | Optional dependencies | Optional |
+
+## Classifiers
+
+Classifiers allow you to request specific variants of artifacts:
+
+```scala build.sbt
+libraryDependencies ++= Seq(
+  // Main artifact
+  "org.apache.spark" %% "spark-core" % "3.5.0",
+  
+  // Tests artifact with classifier
+  "org.apache.spark" %% "spark-core" % "3.5.0" % "test" classifier "tests",
+  
+  // Sources classifier
+  "org.typelevel" %% "cats-core" % "2.10.0" classifier "sources"
+)
+```
+
+<Note>
+Common classifiers include `sources`, `javadoc`, and `tests`.
+</Note>
+
+## Dependency Exclusions
+
+Exclude transitive dependencies:
+
+<CodeGroup>
+```scala Single Exclusion
+libraryDependencies += 
+  "org.apache.spark" %% "spark-core" % "3.5.0" exclude("org.slf4j", "slf4j-log4j12")
+```
+
+```scala Multiple Exclusions
+libraryDependencies += 
+  "org.apache.spark" %% "spark-core" % "3.5.0"
+    .exclude("org.slf4j", "slf4j-log4j12")
+    .exclude("log4j", "log4j")
+```
+
+```scala Global Exclusions
+excludeDependencies ++= Seq(
+  ExclusionRule("org.slf4j", "slf4j-log4j12"),
+  ExclusionRule("log4j", "log4j")
+)
+```
+</CodeGroup>
+
+## Dependency Overrides
+
+Force specific versions of transitive dependencies:
+
+```scala build.sbt
+dependencyOverrides ++= Seq(
+  "com.google.guava" % "guava" % "32.1.3-jre",
+  "org.scala-lang.modules" %% "scala-xml" % "2.2.0"
+)
+```
+
+<Warning>
+Use dependency overrides carefully as they can cause compatibility issues if the forced version is incompatible.
+</Warning>
+
+## Resolvers
+
+Resolvers specify where sbt looks for dependencies:
+
+```scala build.sbt
+resolvers ++= Seq(
+  "Sonatype OSS Snapshots" at "https://oss.sonatype.org/content/repositories/snapshots",
+  "Artima Maven Repository" at "https://repo.artima.com/releases",
+  Resolver.mavenLocal
+)
+```
+
+### Common Resolver Types
+
+<CodeGroup>
+```scala Maven Repository
+resolvers += "Maven Repo" at "https://repo.example.com/maven2"
+```
+
+```scala Ivy Repository
+resolvers += Resolver.url("Ivy Repo", 
+  url("https://repo.example.com/ivy"))(
+  Resolver.ivyStylePatterns
+)
+```
+
+```scala Local Maven
+resolvers += Resolver.mavenLocal
+```
+
+```scala Sonatype Snapshots
+resolvers += Resolver.sonatypeOssRepos("snapshots")
+```
+</CodeGroup>
+
+## Coursier
+
+sbt uses Coursier as the default dependency resolver. Configure Coursier settings:
+
+```scala build.sbt
+// Coursier cache directory
+csrCacheDirectory := file(sys.props("user.home")) / ".coursier" / "cache"
+
+// Reconciliation strategy for version conflicts
+csrReconciliations := Seq(
+  "*" -> Reconciliation.Default
+)
+```
+
+## Conflict Resolution
+
+Handle version conflicts:
+
+<Steps>
+  <Step title="View evictions">
+    ```bash
+    sbt evicted
+    ```
+    Shows which dependency versions were evicted during resolution.
+  </Step>
+  
+  <Step title="Configure conflict manager">
+    ```scala build.sbt
+    conflictManager := ConflictManager.strict
+    ```
+  </Step>
+  
+  <Step title="Set eviction error level">
+    ```scala build.sbt
+    evictionErrorLevel := Level.Warn
+    ```
+  </Step>
+</Steps>
+
+## Version Schemes
+
+Declare how your project versions are structured:
+
+```scala build.sbt
+versionScheme := Some("early-semver")
+// Options: "early-semver", "pvp", "semver-spec", "strict"
+```
+
+This helps sbt understand version compatibility.
+
+## Intransitive Dependencies
+
+Declare a dependency without its transitive dependencies:
+
+```scala build.sbt
+libraryDependencies += 
+  "org.apache.kafka" % "kafka-clients" % "3.6.0" intransitive()
+```
+
+<Warning>
+Intransitive dependencies may cause runtime errors if required transitive dependencies are missing.
+</Warning>
+
+## Module Configurations
+
+Configure resolvers per module:
+
+```scala build.sbt
+moduleConfigurations += ModuleConfiguration(
+  "org.example" %% "*",
+  "Custom Resolver" at "https://custom.repo.example.com/"
+)
+```
+
+## Checking Dependencies
+
+Useful sbt commands for dependency management:
+
+```bash
+# Show dependency tree
+sbt dependencyTree
+
+# Show what dependencies would be added
+sbt "show libraryDependencies"
+
+# Update and fetch dependencies
+sbt update
+
+# Show evicted dependencies
+sbt evicted
+
+# Show classpath
+sbt "show Compile/fullClasspath"
+```
+
+## Credentials for Private Repositories
+
+Configure credentials for private repositories:
+
+<CodeGroup>
+```scala In build.sbt
+credentials += Credentials(
+  "Sonatype Nexus Repository Manager",
+  "nexus.example.com",
+  "username",
+  "password"
+)
+```
+
+```scala From file
+credentials += Credentials(Path.userHome / ".sbt" / ".credentials")
+```
+
+```properties .credentials file
+realm=Sonatype Nexus Repository Manager
+host=nexus.example.com
+user=username
+password=password
+```
+</CodeGroup>
+
+## Dependency Lock Files
+
+Generate and use dependency lock files for reproducible builds:
+
+```bash
+# Generate lock file
+sbt dependencyLock
+
+# Check lock file is up to date
+sbt dependencyLockCheck
+```
+
+## Best Practices
+
+<Steps>
+  <Step title="Use %% for Scala libraries">
+    Always use `%%` for libraries compiled against Scala versions to ensure binary compatibility.
+  </Step>
+  
+  <Step title="Scope test dependencies">
+    Mark test-only dependencies with `% Test` to keep them out of production classpaths.
+  </Step>
+  
+  <Step title="Monitor evictions">
+    Regularly run `sbt evicted` to understand version conflicts in your dependency tree.
+  </Step>
+  
+  <Step title="Pin critical versions">
+    Use `dependencyOverrides` for critical dependencies where version mismatches could cause issues.
+  </Step>
+  
+  <Step title="Use version schemes">
+    Declare your `versionScheme` to help sbt understand compatibility.
+  </Step>
+</Steps>

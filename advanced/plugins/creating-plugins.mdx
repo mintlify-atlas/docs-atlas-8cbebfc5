@@ -1,0 +1,307 @@
+---
+title: Creating Plugins
+description: Learn how to create sbt plugins using the Plugin trait, SbtPlugin, and AutoPlugin system
+---
+
+Plugins allow you to extend sbt's functionality and share build logic across projects. This guide shows you how to create your own sbt plugins.
+
+## Plugin Basics
+
+An sbt plugin is a Scala library that extends sbt's build definition capabilities. Plugins can:
+
+- Add new tasks and settings
+- Modify existing build configuration
+- Integrate external tools
+- Share common build logic across projects
+
+## Creating a Plugin Project
+
+<Steps>
+  <Step title="Set up the plugin project structure">
+    Create a new sbt project for your plugin:
+
+    ```scala
+    // build.sbt
+    name := "my-sbt-plugin"
+    organization := "com.example"
+    version := "0.1.0"
+
+    sbtPlugin := true
+    ```
+
+    Setting `sbtPlugin := true` is crucial - it tells sbt that this project produces a plugin.
+  </Step>
+
+  <Step title="Define your AutoPlugin">
+    Create your plugin by extending `AutoPlugin`:
+
+    ```scala
+    package com.example
+
+    import sbt._
+    import sbt.Keys._
+
+    object MyPlugin extends AutoPlugin {
+      // Plugin configuration
+      override def trigger = allRequirements
+      override def requires = plugins.JvmPlugin
+
+      // Keys available to users
+      object autoImport {
+        val myTask = taskKey[Unit]("My custom task")
+        val mySetting = settingKey[String]("My custom setting")
+      }
+
+      import autoImport._
+
+      // Settings added to projects
+      override lazy val projectSettings: Seq[Setting[_]] = Seq(
+        mySetting := "default value",
+        myTask := {
+          val log = streams.value.log
+          log.info(s"Running my task with: ${mySetting.value}")
+        }
+      )
+    }
+    ```
+  </Step>
+
+  <Step title="Publish your plugin">
+    Publish your plugin to make it available:
+
+    ```scala
+    // build.sbt
+    publishMavenStyle := true
+    publishTo := Some(
+      if (isSnapshot.value)
+        "snapshots" at "https://oss.sonatype.org/content/repositories/snapshots"
+      else
+        "releases" at "https://oss.sonatype.org/service/local/staging/deploy/maven2"
+    )
+    ```
+  </Step>
+</Steps>
+
+## Using SbtPlugin
+
+For plugins that extend sbt itself (meta-plugins), use the `SbtPlugin` AutoPlugin. Here's the actual implementation from sbt:
+
+```scala
+object SbtPlugin extends AutoPlugin:
+  override def requires = ScriptedPlugin
+
+  override lazy val projectSettings: Seq[Setting[?]] = Seq(
+    sbtPlugin := true,
+    pluginCrossBuild / sbtVersion := {
+      scalaBinaryVersion.value match
+        case "3"    => sbtVersion.value
+        case "2.12" => "1.5.8"
+        case "2.10" => "0.13.18"
+    },
+  )
+end SbtPlugin
+```
+
+<Note>
+The `SbtPlugin` automatically:
+- Sets `sbtPlugin := true`
+- Configures cross-building for different sbt versions
+- Requires `ScriptedPlugin` for testing
+</Note>
+
+To use it in your plugin:
+
+```scala
+// project/plugins.sbt
+addSbtPlugin("org.scala-sbt" % "sbt" % sbtVersion.value)
+
+// build.sbt - enable SbtPlugin
+enablePlugins(SbtPlugin)
+```
+
+## Plugin Anatomy
+
+Every AutoPlugin has several key components:
+
+### The autoImport Object
+
+The `autoImport` object defines keys that are automatically imported into user's `.sbt` files:
+
+```scala
+object autoImport {
+  // Tasks that users can run
+  val myTask = taskKey[Unit]("Description")
+  val myComplexTask = taskKey[Seq[File]]("Returns files")
+
+  // Settings users can configure
+  val mySetting = settingKey[String]("Configuration")
+  val myFlag = settingKey[Boolean]("Enable feature")
+
+  // Input tasks that accept arguments
+  val myInput = inputKey[Unit]("Accepts args")
+}
+```
+
+### Settings Scopes
+
+Plugins can inject settings at different scopes:
+
+```scala
+object MyPlugin extends AutoPlugin {
+  // Applied once globally across all projects
+  override lazy val globalSettings: Seq[Setting[_]] = Seq(
+    myGlobalFlag := true
+  )
+
+  // Applied once per build
+  override lazy val buildSettings: Seq[Setting[_]] = Seq(
+    organization := "com.example"
+  )
+
+  // Applied to each project that activates this plugin
+  override lazy val projectSettings: Seq[Setting[_]] = Seq(
+    version := "1.0.0",
+    myTask := { /* implementation */ }
+  )
+}
+```
+
+### Configurations
+
+Plugins can add custom configurations:
+
+```scala
+import sbt.librarymanagement.Configuration
+
+object MyPlugin extends AutoPlugin {
+  object autoImport {
+    val MyConfig = config("myconfig").hide
+  }
+
+  import autoImport._
+
+  override def projectConfigurations: Seq[Configuration] = Seq(MyConfig)
+
+  override lazy val projectSettings = 
+    inConfig(MyConfig)(Defaults.testSettings)
+}
+```
+
+## Real-World Examples from sbt
+
+### Simple Plugin: Giter8TemplatePlugin
+
+```scala
+object Giter8TemplatePlugin extends AutoPlugin {
+  override def requires = CorePlugin
+  override def trigger = allRequirements
+
+  override lazy val globalSettings: Seq[Setting[?]] =
+    Seq(
+      templateResolverInfos +=
+        TemplateResolverInfo(
+          ModuleID(
+            "org.scala-sbt.sbt-giter8-resolver",
+            "sbt-giter8-resolver",
+            "0.18.0"
+          ).cross(CrossVersion.binary),
+          "sbtgiter8resolver.Giter8TemplateResolver"
+        )
+    )
+}
+```
+
+This plugin simply adds a template resolver to the global settings.
+
+### Complex Plugin: DependencyTreePlugin
+
+```scala
+object DependencyTreePlugin extends AutoPlugin {
+  object autoImport extends DependencyTreeKeys
+
+  private val defaultDependencyDotHeader =
+    """digraph "dependency-graph" {
+        |    graph[rankdir="LR"; splines=polyline]
+        |    edge [
+        |        arrowtail="none"
+        |    ]""".stripMargin
+
+  import autoImport._
+  override def trigger: PluginTrigger = AllRequirements
+  
+  override def globalSettings: Seq[Def.Setting[?]] = Seq(
+    dependencyTreeIncludeScalaLibrary :== false,
+    dependencyDotNodeColors :== true,
+    dependencyDotHeader := defaultDependencyDotHeader
+  )
+  
+  override lazy val projectSettings: Seq[Def.Setting[?]] =
+    DependencyTreeSettings.coreSettings ++
+      inConfig(Compile)(DependencyTreeSettings.baseSettings) ++
+      inConfig(Test)(DependencyTreeSettings.baseSettings)
+}
+```
+
+This plugin demonstrates:
+- Separating keys into a dedicated trait (`DependencyTreeKeys`)
+- Using default values for complex settings
+- Applying settings to specific configurations (Compile, Test)
+
+## Testing Your Plugin
+
+<Tip>
+Use scripted tests to verify your plugin works correctly. The `ScriptedPlugin` provides infrastructure for integration testing.
+</Tip>
+
+```scala
+// build.sbt
+enablePlugins(SbtPlugin)
+
+scriptedLaunchOpts := {
+  scriptedLaunchOpts.value ++
+    Seq("-Xmx1024M", "-Dplugin.version=" + version.value)
+}
+
+scriptedBufferLog := false
+```
+
+Create test cases in `src/sbt-test/<test-group>/<test-name>/`:
+
+```
+src/sbt-test/
+  my-plugin/
+    simple/
+      build.sbt
+      project/plugins.sbt
+      test
+```
+
+## Publishing and Usage
+
+Once published, users add your plugin to their project:
+
+```scala
+// project/plugins.sbt
+addSbtPlugin("com.example" % "my-sbt-plugin" % "0.1.0")
+```
+
+If your plugin uses `trigger = allRequirements`, it activates automatically. Otherwise, users enable it explicitly:
+
+```scala
+// build.sbt
+enablePlugins(MyPlugin)
+```
+
+<Warning>
+Always maintain binary compatibility between minor versions. Use MiMA to check:
+
+```bash
+sbt mimaReportBinaryIssues
+```
+</Warning>
+
+## Next Steps
+
+- Learn about [AutoPlugin best practices](/advanced/plugins/plugin-best-practices)
+- Understand the [AutoPlugin system](/advanced/plugins/auto-plugins) in depth
+- Review [sbt coding style](https://github.com/sbt/sbt/blob/develop/contributing-docs/03_coding_style.md)

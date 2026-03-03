@@ -1,0 +1,452 @@
+---
+title: Directory Structure
+description: Standard sbt project directory structure and organization
+---
+
+sbt uses a standardized directory structure based on Maven conventions. Understanding this structure is essential for organizing your Scala projects effectively.
+
+## Standard Project Layout
+
+A typical sbt project has the following structure:
+
+```
+project-root/
+├── build.sbt                  # Main build definition
+├── project/                   # Build definition project
+│   ├── build.properties      # sbt version
+│   ├── plugins.sbt           # sbt plugins
+│   └── Dependencies.scala    # (optional) Dependency definitions
+├── src/
+│   ├── main/
+│   │   ├── scala/           # Main Scala sources
+│   │   ├── java/            # Main Java sources
+│   │   └── resources/       # Main resources
+│   └── test/
+│       ├── scala/           # Test Scala sources
+│       ├── java/            # Test Java sources
+│       └── resources/       # Test resources
+├── target/                    # Generated files (gitignored)
+└── lib/                       # Unmanaged dependencies (optional)
+```
+
+## Source Directories
+
+### Main Sources
+
+<ParamField path="src/main/scala" type="Directory">
+  Primary Scala source files for the `Compile` configuration.
+  
+  **Default location:** `baseDirectory.value / "src" / "main" / "scala"`
+  
+  ```scala
+  // Customize:
+  Compile / scalaSource := baseDirectory.value / "src"
+  ```
+</ParamField>
+
+<ParamField path="src/main/java" type="Directory">
+  Primary Java source files for the `Compile` configuration.
+  
+  **Default location:** `baseDirectory.value / "src" / "main" / "java"`
+  
+  ```scala
+  // Customize:
+  Compile / javaSource := baseDirectory.value / "java-src"
+  ```
+</ParamField>
+
+<ParamField path="src/main/resources" type="Directory">
+  Resource files (configuration, images, etc.) for the `Compile` configuration.
+  
+  Resources are copied to the classpath during compilation.
+  
+  **Default location:** `baseDirectory.value / "src" / "main" / "resources"`
+</ParamField>
+
+### Test Sources
+
+<ParamField path="src/test/scala" type="Directory">
+  Scala test sources for the `Test` configuration.
+  
+  **Default location:** `baseDirectory.value / "src" / "test" / "scala"`
+  
+  ```scala
+  // Customize:
+  Test / scalaSource := baseDirectory.value / "test-src" / "scala"
+  ```
+</ParamField>
+
+<ParamField path="src/test/java" type="Directory">
+  Java test sources for the `Test` configuration.
+  
+  **Default location:** `baseDirectory.value / "src" / "test" / "java"`
+</ParamField>
+
+<ParamField path="src/test/resources" type="Directory">
+  Test resource files for the `Test` configuration.
+  
+  **Default location:** `baseDirectory.value / "src" / "test" / "resources"`
+</ParamField>
+
+### Cross-Version Sources
+
+sbt supports Scala version-specific source directories:
+
+```
+src/
+├── main/
+│   ├── scala/              # Shared sources
+│   ├── scala-2/            # Scala 2.x specific
+│   ├── scala-2.13/         # Scala 2.13 specific
+│   └── scala-3/            # Scala 3 specific
+```
+
+These directories are automatically included based on `scalaVersion`:
+
+- `scala-2/`: Used for Scala 2.x versions
+- `scala-2.13/`: Used for Scala 2.13.x versions
+- `scala-3/`: Used for Scala 3.x versions
+
+<Note>
+  More specific directories (e.g., `scala-2.13`) take precedence over general ones (e.g., `scala-2`).
+</Note>
+
+## Build Definition
+
+### build.sbt
+
+<ParamField path="build.sbt" type="File">
+  The main build definition file written in sbt's DSL (Scala-based).
+  
+  ```scala
+  name := "my-project"
+  version := "1.0.0"
+  scalaVersion := "3.3.1"
+  
+  libraryDependencies ++= Seq(
+    "org.typelevel" %% "cats-core" % "2.10.0",
+    "org.scalatest" %% "scalatest" % "3.2.17" % Test
+  )
+  ```
+</ParamField>
+
+### project/
+
+<ParamField path="project/" type="Directory">
+  The meta-build directory containing the build definition's build definition.
+  
+  This directory is itself an sbt project used to build your main project.
+</ParamField>
+
+<ParamField path="project/build.properties" type="File">
+  Specifies the sbt version to use for the build.
+  
+  ```properties
+  sbt.version=1.9.7
+  ```
+  
+  <Warning>
+    This file is crucial for build reproducibility. Always commit it to version control.
+  </Warning>
+</ParamField>
+
+<ParamField path="project/plugins.sbt" type="File">
+  Declares sbt plugins for the build.
+  
+  ```scala
+  addSbtPlugin("org.scalameta" % "sbt-scalafmt" % "2.5.2")
+  addSbtPlugin("com.github.sbt" % "sbt-native-packager" % "1.9.16")
+  ```
+</ParamField>
+
+<ParamField path="project/Dependencies.scala" type="File" default="optional">
+  Optional file for organizing dependencies.
+  
+  ```scala
+  import sbt._
+  
+  object Dependencies {
+    val catsVersion = "2.10.0"
+    
+    val catsCore = "org.typelevel" %% "cats-core" % catsVersion
+    val scalaTest = "org.scalatest" %% "scalatest" % "3.2.17" % Test
+  }
+  ```
+</ParamField>
+
+## Output Directories
+
+### target/
+
+<ParamField path="target/" type="Directory">
+  Main directory for all files generated by the build.
+  
+  **Default location:** Defined by `BuildPaths.DefaultTargetName` ("target")
+  
+  <Warning>
+    The `target/` directory should be added to `.gitignore` as it contains generated files.
+  </Warning>
+</ParamField>
+
+### target/scala-\<version\>/
+
+Version-specific output directory:
+
+```
+target/
+└── scala-3.3.1/
+    ├── classes/              # Compiled classes (Compile)
+    ├── test-classes/         # Compiled test classes (Test)
+    ├── src_managed/          # Generated sources
+    ├── resource_managed/     # Generated resources
+    ├── api/                  # Generated API docs
+    ├── zinc/                 # Incremental compilation metadata
+    └── *.jar                 # Packaged artifacts
+```
+
+<ParamField path="target/scala-\<version\>/classes" type="Directory">
+  Compiled classes and resources for the `Compile` configuration.
+  
+  **Setting:** `Compile / classDirectory`
+  
+  ```scala
+  Compile / classDirectory := target.value / "classes"
+  ```
+</ParamField>
+
+<ParamField path="target/scala-\<version\>/test-classes" type="Directory">
+  Compiled test classes and test resources for the `Test` configuration.
+  
+  **Setting:** `Test / classDirectory`
+</ParamField>
+
+### Global Directories
+
+sbt uses global directories for caching and configuration:
+
+<ParamField path="~/.sbt/" type="Directory">
+  Global sbt directory for user-level configuration and plugins.
+  
+  **Structure:**
+  ```
+  ~/.sbt/
+  ├── 1.0/
+  │   ├── plugins/          # Global plugins
+  │   └── *.sbt             # Global settings
+  └── boot/                 # sbt launcher cache
+  ```
+  
+  **Property:** `sbt.global.base`
+</ParamField>
+
+<ParamField path="~/.ivy2/" type="Directory">
+  Ivy cache for dependency resolution (default).
+  
+  **Structure:**
+  ```
+  ~/.ivy2/
+  ├── cache/                # Dependency metadata cache
+  └── local/                # Local Ivy repository
+  ```
+</ParamField>
+
+<ParamField path="~/.cache/coursier/" type="Directory">
+  Coursier cache for downloaded dependencies (used by modern sbt).
+  
+  **Setting:** `csrCacheDirectory`
+  
+  ```scala
+  csrCacheDirectory := baseDirectory.value / ".coursier-cache"
+  ```
+</ParamField>
+
+## Unmanaged Dependencies
+
+<ParamField path="lib/" type="Directory" default="optional">
+  Unmanaged JAR dependencies that are not managed by a dependency manager.
+  
+  **Default location:** `baseDirectory.value / "lib"`
+  
+  ```scala
+  // Customize:
+  unmanagedBase := baseDirectory.value / "custom-lib"
+  ```
+  
+  JAR files in this directory are automatically added to the classpath.
+</ParamField>
+
+## Multi-Project Layout
+
+For multi-module builds:
+
+```
+root/
+├── build.sbt                 # Root build definition
+├── project/
+│   └── build.properties
+├── core/
+│   └── src/
+│       ├── main/scala/
+│       └── test/scala/
+├── api/
+│   └── src/
+│       ├── main/scala/
+│       └── test/scala/
+└── cli/
+    └── src/
+        ├── main/scala/
+        └── test/scala/
+```
+
+With build definition:
+
+```scala
+// build.sbt
+lazy val root = (project in file("."))
+  .aggregate(core, api, cli)
+  .settings(
+    name := "my-multi-project"
+  )
+
+lazy val core = (project in file("core"))
+  .settings(
+    name := "core",
+    libraryDependencies += "org.typelevel" %% "cats-core" % "2.10.0"
+  )
+
+lazy val api = (project in file("api"))
+  .dependsOn(core)
+  .settings(
+    name := "api"
+  )
+
+lazy val cli = (project in file("cli"))
+  .dependsOn(api)
+  .settings(
+    name := "cli"
+  )
+```
+
+## Customizing Directory Structure
+
+### Custom Source Directories
+
+```scala
+// Use non-standard directory structure
+Compile / scalaSource := baseDirectory.value / "src"
+Compile / javaSource := baseDirectory.value / "java-src"
+Compile / resourceDirectory := baseDirectory.value / "conf"
+
+Test / scalaSource := baseDirectory.value / "test"
+Test / resourceDirectory := baseDirectory.value / "test-conf"
+```
+
+### Custom Output Directory
+
+```scala
+// Change target directory
+target := baseDirectory.value / "output"
+
+// Disable cross-path
+crossPaths := false
+// Now output goes to target/ instead of target/scala-<version>/
+```
+
+### Sources in Base Directory
+
+```scala
+// Include *.scala files from base directory
+sourcesInBase := true
+
+// Disable (default for multi-project builds)
+sourcesInBase := false
+```
+
+<Note>
+  `sourcesInBase := true` is the default for single-project builds but disabled for multi-project builds to avoid conflicts.
+</Note>
+
+## Best Practices
+
+### 1. Follow Standard Conventions
+
+Stick to the standard directory structure when possible:
+
+```scala
+// Good: Standard layout
+src/main/scala/com/example/Main.scala
+
+// Avoid: Non-standard layout without good reason
+main/MyMain.scala
+```
+
+### 2. Ignore Generated Files
+
+Always add `target/` to `.gitignore`:
+
+```gitignore
+# .gitignore
+target/
+.bsp/
+.metals/
+.bloop/
+.idea/
+*.class
+*.log
+```
+
+### 3. Commit Build Definition
+
+Always commit these files:
+
+- `build.sbt`
+- `project/build.properties`
+- `project/plugins.sbt`
+- `project/*.scala`
+
+### 4. Use Cross-Version Directories Sparingly
+
+Only create version-specific directories when necessary:
+
+```
+src/main/
+├── scala/              # Shared code (preferred)
+└── scala-3/            # Only when Scala 3-specific features needed
+```
+
+### 5. Organize Large Projects
+
+For large multi-module projects:
+
+```
+project-root/
+├── modules/
+│   ├── core/
+│   ├── api/
+│   └── cli/
+├── build.sbt
+└── project/
+    ├── Build.scala     # Shared build logic
+    └── Dependencies.scala
+```
+
+## Directory Reference
+
+| Directory | Purpose | Setting |
+|-----------|---------|----------|
+| `src/main/scala` | Main Scala sources | `Compile / scalaSource` |
+| `src/main/java` | Main Java sources | `Compile / javaSource` |
+| `src/main/resources` | Main resources | `Compile / resourceDirectory` |
+| `src/test/scala` | Test Scala sources | `Test / scalaSource` |
+| `src/test/java` | Test Java sources | `Test / javaSource` |
+| `src/test/resources` | Test resources | `Test / resourceDirectory` |
+| `target/` | Build output | `target` |
+| `target/scala-<version>/classes` | Compiled classes | `Compile / classDirectory` |
+| `project/` | Build definition | N/A |
+| `lib/` | Unmanaged JARs | `unmanagedBase` |
+
+## See Also
+
+- [Settings and Tasks](/reference/settings-and-tasks) - Configuring directory settings
+- [Configurations](/reference/configurations) - Understanding configuration-specific directories
+- [Command Line](/reference/command-line) - Working with the build from the command line

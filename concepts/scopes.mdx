@@ -1,0 +1,344 @@
+---
+title: Scopes
+description: Understanding sbt's scope axis system for configuration and task isolation
+---
+
+## Overview
+
+In sbt, every setting and task key exists within a **scope**. Scopes allow you to have different values for the same key in different contexts, such as different projects, configurations, or tasks.
+
+## The Scope Axes
+
+From the source code (main-settings/src/main/scala/sbt/Scope.scala:21-49):
+
+```scala
+final case class Scope private (
+    project: ScopeAxis[Reference],
+    config: ScopeAxis[ConfigKey],
+    task: ScopeAxis[AttributeKey[?]],
+    extra: ScopeAxis[AttributeMap]
+)
+
+object Scope:
+  val ThisScope: Scope = new Scope(This, This, This, This)
+  val Global: Scope = new Scope(Zero, Zero, Zero, Zero)
+  val ThisBuildScope: Scope = Scope(Select(ThisBuild), This, This, This)
+  val GlobalScope: Scope = Global
+```
+
+A scope has four axes:
+
+1. **Project axis** - Which project (in multi-project builds)
+2. **Configuration axis** - Which configuration (Compile, Test, Runtime, etc.)
+3. **Task axis** - Which task the setting applies to
+4. **Extra axis** - Custom scope dimensions (rarely used)
+
+## Scope Syntax
+
+sbt uses the slash (`/`) operator to specify scopes:
+
+```scala
+// Syntax: project / config / task / key
+Test / sourceDirectory         // Test configuration
+Compile / compile / scalacOptions  // compile task in Compile config
+ThisBuild / version            // Applies to all projects
+```
+
+<Note>
+The modern slash syntax (`/`) replaced the older `in` syntax. The slash syntax is more concise and recommended.
+</Note>
+
+## Configuration Scope
+
+Configurations are the most commonly used scope axis. sbt has several built-in configurations:
+
+### Built-in Configurations
+
+```scala
+// From librarymanagement library
+Compile    // Main sources and compilation
+Test       // Test sources and compilation
+Runtime    // Runtime dependencies
+Provided   // Compile-time only dependencies
+```
+
+### Configuration Examples
+
+From Keys.scala and practical usage:
+
+```scala
+// Different source directories per configuration
+Compile / sourceDirectory := baseDirectory.value / "src" / "main"
+Test / sourceDirectory := baseDirectory.value / "src" / "test"
+
+// Different Scala options per configuration
+Compile / scalacOptions ++= Seq("-deprecation", "-feature")
+Test / scalacOptions ++= Seq("-deprecation")
+
+// Different dependencies per configuration
+libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.17" % Test
+```
+
+From the sbt build.sbt:155-159:
+
+```scala
+Compile / generateContrabands / sourceManaged := 
+  baseDirectory.value / "src" / "main" / "contraband-scala"
+
+Compile / managedSourceDirectories +=
+  baseDirectory.value / "src" / "main" / "contraband-scala"
+
+Compile / generateContrabands / contrabandScala3enum := false
+```
+
+## Task Scope
+
+Settings can be scoped to specific tasks:
+
+```scala
+// Scala options specifically for the console task
+console / scalacOptions := {
+  (Compile / scalacOptions).value.filterNot(_ == "-Xfatal-warnings")
+}
+
+// Fork options for the run task
+run / fork := true
+run / javaOptions += "-Xmx2G"
+
+// Output strategy for test
+Test / test / outputStrategy := Some(StdoutOutput)
+```
+
+From Keys.scala:192-196:
+
+```scala
+val run / traceLevel := 0
+val runMain / traceLevel := 0
+val bgRun / traceLevel := 0
+val fgRun / traceLevel := 0
+val console / traceLevel := Int.MaxValue
+```
+
+## Project Scope
+
+In multi-project builds, you can scope settings to specific projects:
+
+```scala
+lazy val core = project
+  .settings(
+    name := "core",
+    version := "1.0.0"
+  )
+
+lazy val app = project
+  .dependsOn(core)
+  .settings(
+    name := "app",
+    // Reference core project's setting
+    version := (core / version).value
+  )
+```
+
+### ThisBuild Scope
+
+Settings scoped to `ThisBuild` apply to all projects in the build:
+
+From build.sbt:13-25:
+
+```scala
+ThisBuild / version := "2.0.0-RC9-bin-SNAPSHOT"
+ThisBuild / organization := "org.scala-sbt"
+ThisBuild / description := "sbt is an interactive build tool"
+ThisBuild / licenses := List(
+  "Apache-2.0" -> url("https://github.com/sbt/sbt/blob/develop/LICENSE")
+)
+ThisBuild / javacOptions ++= Seq("-source", "1.8", "-target", "1.8")
+ThisBuild / Compile / doc / javacOptions := Nil
+```
+
+<Tip>
+Use `ThisBuild` for settings that should be consistent across all subprojects, like organization, version scheme, or compiler flags.
+</Tip>
+
+## Global Scope
+
+Global scope settings apply everywhere:
+
+```scala
+// Global settings from Defaults.scala:151-169
+Global / excludeFilter := HiddenFileFilter
+Global / onChangedBuildSource := SysProp.onChangedBuildSource
+Global / concurrentRestrictions += Tags.limitAll(1)
+```
+
+<Warning>
+Use global scope sparingly - most settings should be scoped more specifically to avoid unexpected behavior.
+</Warning>
+
+## Scope Delegation
+
+When a key is not defined in a specific scope, sbt looks for it in more general scopes through **scope delegation**.
+
+### Delegation Order
+
+From Scope.scala and the delegation algorithm:
+
+1. Current scope exactly
+2. Project axis fallback: Current project → `ThisBuild` → `Global`
+3. Configuration axis fallback: Current config → Parent configs → `Global`  
+4. Task axis fallback: Current task → `Global`
+
+### Example
+
+When you reference `Test / scalacOptions`:
+
+1. Look for `Test / scalacOptions`
+2. If not found, try `scalacOptions` (Zero config)
+3. If not found, try `Global / scalacOptions`
+
+```scala
+// Defined in Compile
+Compile / scalacOptions := Seq("-deprecation")
+
+// Test inherits from Compile through delegation
+// Unless explicitly overridden:
+Test / scalacOptions := (Compile / scalacOptions).value ++ Seq("-Xfatal-warnings")
+```
+
+## Inspecting Scopes
+
+Use sbt's `inspect` command to see scope information:
+
+```bash
+sbt:project> inspect Test / scalacOptions
+```
+
+Output shows:
+- Current value
+- Scope delegation path
+- Dependencies
+- Reverse dependencies
+
+## Practical Examples
+
+### Configuration-Specific Settings
+
+```scala
+// Different source directories
+Compile / scalaSource := baseDirectory.value / "src" / "main" / "scala"
+Test / scalaSource := baseDirectory.value / "src" / "test" / "scala"
+
+// Different resource directories  
+Compile / resourceDirectory := baseDirectory.value / "src" / "main" / "resources"
+Test / resourceDirectory := baseDirectory.value / "src" / "test" / "resources"
+
+// Different unmanagedSourceDirectories
+Compile / unmanagedSourceDirectories := Seq(
+  (Compile / scalaSource).value,
+  (Compile / javaSource).value
+)
+```
+
+### Task-Specific Settings
+
+From Keys.scala and Defaults.scala:
+
+```scala
+// Specific options for the doc task
+Compile / doc / scalacOptions ++= Seq(
+  "-doc-title", name.value,
+  "-doc-version", version.value
+)
+
+// Forking configuration for run
+run / fork := true
+run / connectInput := true
+run / javaOptions ++= Seq(
+  "-Xmx4G",
+  "-XX:+UseG1GC"
+)
+```
+
+### Multi-Configuration Example
+
+From sbt's build (build.sbt:101-110):
+
+```scala
+Compile / javafmtOnCompile := Def
+  .taskDyn(if ((scalafmtOnCompile).value) Compile / javafmt else Def.task(()))
+  .value
+
+Test / javafmtOnCompile := Def
+  .taskDyn(if ((Test / scalafmtOnCompile).value) Test / javafmt else Def.task(()))
+  .value
+
+Compile / unmanagedSources / inputFileStamps :=
+  (Compile / unmanagedSources / inputFileStamps).dependsOn(Compile / javafmtOnCompile).value
+```
+
+## Custom Configurations
+
+You can define custom configurations:
+
+```scala
+val IntegrationTest = config("it") extend(Test)
+
+lazy val root = project
+  .configs(IntegrationTest)
+  .settings(
+    inConfig(IntegrationTest)(Defaults.testSettings),
+    IntegrationTest / scalaSource := baseDirectory.value / "src" / "it" / "scala"
+  )
+```
+
+From ProjectExtra.scala:158-159:
+
+```scala
+def inConfig(conf: Configuration)(ss: Seq[Setting[?]]): Seq[Setting[?]] =
+  Project.inScope(ThisScope.copy(config = Select(conf)))((Keys.configuration :== conf) +: ss)
+```
+
+## Scope Best Practices
+
+<Note>
+**Most specific scope wins**: When defining settings, use the most specific scope that makes sense. This makes your build definition clearer and more maintainable.
+</Note>
+
+<Tip>
+**Use ThisBuild for cross-cutting concerns**: Version, organization, and common compiler flags are good candidates for `ThisBuild` scope.
+</Tip>
+
+<Warning>
+**Avoid over-scoping**: Don't scope settings unnecessarily. If a setting applies to all configurations, define it without a configuration scope.
+</Warning>
+
+```scala
+// Good - applies to all configurations
+scalacOptions += "-encoding" -> "UTF-8"
+
+// Unnecessary - don't do this
+Compile / scalacOptions += "-encoding" -> "UTF-8"
+Test / scalacOptions += "-encoding" -> "UTF-8"
+```
+
+## Debugging Scopes
+
+Commands to understand scoping:
+
+```bash
+# Show all tasks and settings
+sbt> settings -V
+
+# Show value and provenance
+sbt> show Test / scalacOptions
+
+# Detailed inspection
+sbt> inspect Test / scalacOptions
+sbt> inspect tree Test / compile
+```
+
+## References
+
+- [Tasks and Settings](./tasks-and-settings) - Understanding settings and tasks
+- [Build Definition](./build-definition) - Overall build structure  
+- [Multi-Project Builds](./multi-project-builds) - Scoping across projects

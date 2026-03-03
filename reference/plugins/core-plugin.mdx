@@ -1,0 +1,257 @@
+---
+title: CorePlugin
+description: Core sbt plugin that provides essential build infrastructure settings and tasks
+---
+
+The `CorePlugin` is automatically enabled on all sbt projects and provides fundamental settings required for the sbt build engine to function. It controls task-level parallelism, logging, project structure, and other essential build operations.
+
+## Activation
+
+<ParamField name="Trigger" type="allRequirements">
+  Automatically enabled on all projects
+</ParamField>
+
+<ParamField name="Requires" type="empty">
+  No plugin dependencies
+</ParamField>
+
+## Overview
+
+CorePlugin provides the foundational settings layer that all sbt builds depend on. Without this plugin, the sbt build engine cannot operate. It includes both global settings (applied once per build) and project-level settings (applied to each project).
+
+## Global Settings
+
+The plugin provides extensive global configuration through `globalSbtCore`:
+
+### Build Structure
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `buildStructure` | `Task[BuildStructure]` | Derived from state | The build's project structure |
+| `settingsData` | `Task[Settings]` | From buildStructure | All settings in the build |
+| `sbtVersion` | `String` | From app config | Version of sbt running this build |
+| `sbtBinaryVersion` | `String` | Computed | Binary-compatible sbt version |
+
+### Task Execution
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `parallelExecution` | `Boolean` | `true` | Enable parallel task execution |
+| `concurrentRestrictions` | `Seq[Tags.Rule]` | Default rules | Limits on concurrent task execution |
+| `maxErrors` | `Int` | `100` | Maximum compilation errors to display |
+| `cancelable` | `Boolean` | `true` | Whether tasks can be cancelled |
+| `taskCancelStrategy` | `State => TaskCancellationStrategy` | Signal or Null | How to cancel running tasks |
+
+### Logging & Output
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `logBuffered` | `Boolean` | `false` | Buffer logging until task completion |
+| `showSuccess` | `Boolean` | `true` | Show success messages |
+| `showTiming` | `Boolean` | `true` | Display task timing information |
+| `extraAppenders` | `AppenderSupplier` | Empty | Additional log appenders |
+| `outputStrategy` | `Option[OutputStrategy]` | `None` | Strategy for subprocess output |
+
+### Environment & System
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `envVars` | `Map[String, String]` | Empty map | Environment variables for forked processes |
+| `fork` | `Boolean` | `false` | Run tasks in a forked JVM |
+| `connectInput` | `Boolean` | `false` | Connect standard input to forked processes |
+| `trapExit` | `Boolean` | `true` | Trap `System.exit` calls |
+
+### Performance
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `turbo` | `Boolean` | From system property | Enable turbo mode optimizations |
+| `usePipelining` | `Boolean` | From system property | Enable compilation pipelining |
+| `exportPipelining` | `Boolean` | `usePipelining` value | Export pipelining artifacts |
+| `forcegc` | `Boolean` | Platform-dependent | Force garbage collection between tasks |
+| `minForcegcInterval` | `FiniteDuration` | Default interval | Minimum time between forced GCs |
+| `fileCacheSize` | `String` | `"128M"` | Size of file metadata cache |
+
+### SuperShell
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `useSuperShell` | `Boolean` | Auto-detected | Enable SuperShell UI |
+| `superShellThreshold` | `Int` | From system property | Threshold for SuperShell activation |
+| `superShellMaxTasks` | `Int` | From system property | Maximum tasks shown in SuperShell |
+| `superShellSleep` | `FiniteDuration` | From system property | SuperShell refresh rate |
+
+### File Watching
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `watchSources` | `Seq[Source]` | `Nil` | Sources to watch for changes (deprecated) |
+| `fileTreeView` | `FileTreeView` | Default | File tree implementation for watching |
+
+### Server
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `autoStartServer` | `Boolean` | `true` | Automatically start sbt server |
+| `serverHost` | `String` | `"127.0.0.1"` | Server host address |
+| `serverPort` | `Int` | Auto-generated | Server port (5000 + hash) |
+| `serverIdleTimeout` | `Option[FiniteDuration]` | `Some(7 days)` | Server idle timeout |
+| `serverConnectionType` | `ConnectionType` | `Local` | Type of server connection |
+| `serverAuthentication` | `Set[ServerAuthentication]` | Context-dependent | Server authentication methods |
+| `serverHandlers` | `Seq[ServerHandler]` | `Nil` | Custom server request handlers |
+
+### Build Management
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `checkBuildSources` | `Task[Boolean]` | Auto-implemented | Check if build sources changed |
+| `onLoad` | `State => State` | Identity | Function run when project loads |
+| `onUnload` | `State => State` | Cleanup tasks | Function run when project unloads |
+| `commands` | `Seq[Command]` | `Nil` | Custom commands available in build |
+| `aggregate` | `Boolean` | `true` | Aggregate tasks across projects |
+
+### Templates
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `templateResolverInfos` | `Seq[TemplateResolverInfo]` | `Nil` | Template resolver configurations |
+| `templateDescriptions` | `Seq[TemplateDescription]` | Default templates | Available project templates |
+| `templateRunLocal` | `InputTask[Unit]` | Default implementation | Run a local template |
+
+### Progress Reporting
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `progressReports` | `Seq[TaskProgress]` | Timing & trace events | Progress reporting implementations |
+| `commandProgress` | `Seq[CommandProgress]` | `Nil` | Command-level progress reporters |
+
+### Temporary Files
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `taskTemporaryDirectory` | `File` | Auto-created | Directory for task temporary files |
+| `onComplete` | `() => Unit` | Cleanup function | Cleanup after build completion |
+
+## Project Settings
+
+The plugin provides essential project-level settings through `coreDefaultSettings`:
+
+### Project Structure
+
+<ParamField name="baseDirectory" type="File">
+  The base directory of the project. Defaults to the project's directory in the build.
+</ParamField>
+
+<ParamField name="target" type="File">
+  The target directory for build outputs. Defaults to `baseDirectory / "target"`.
+</ParamField>
+
+<ParamField name="name" type="String">
+  The project name. Defaults to the project ID from the build definition.
+</ParamField>
+
+### ClassLoader Configuration
+
+<ParamField name="classLoaderLayeringStrategy" type="ClassLoaderLayeringStrategy">
+  Strategy for layering class loaders. In turbo mode, uses `AllLibraryJars`; otherwise uses `ScalaLibrary`.
+</ParamField>
+
+<ParamField name="bgHashClasspath" type="Boolean">
+  Whether to hash classpaths in background jobs. Defaults to `!turbo`.
+</ParamField>
+
+### Publishing Skip Control
+
+<ParamField name="publishLocal / skip" type="Boolean">
+  Whether to skip local publishing. Inherits from `publish / skip`.
+</ParamField>
+
+<ParamField name="publishM2 / skip" type="Boolean">
+  Whether to skip Maven local publishing. Inherits from `publish / skip`.
+</ParamField>
+
+### Logging
+
+<ParamField name="logManager" type="LogManager">
+  Manages logging appenders and output. Uses `extraAppenders` and console output.
+</ParamField>
+
+<ParamField name="onLoadMessage" type="String">
+  Message displayed when the project is loaded. Shows current project name and build location.
+</ParamField>
+
+## Tasks
+
+The CorePlugin provides fundamental tasks through `projectTasks`:
+
+### Clean
+
+<ParamField name="clean" type="Task[Unit]">
+  Deletes files produced by the build, preserving files specified in `cleanKeepFiles` and matching `cleanKeepGlobs`.
+</ParamField>
+
+<ParamField name="cleanFiles" type="Seq[File]">
+  List of files and directories to delete when `clean` runs.
+</ParamField>
+
+<ParamField name="cleanKeepFiles" type="Seq[File]">
+  Files to preserve during clean. Defaults to empty.
+</ParamField>
+
+<ParamField name="cleanKeepGlobs" type="Seq[Glob]">
+  Glob patterns for files to preserve during clean. Includes history path by default.
+</ParamField>
+
+## Usage Examples
+
+### Disable Parallel Execution
+
+```scala
+Global / parallelExecution := false
+```
+
+### Increase Max Errors
+
+```scala
+Global / maxErrors := 200
+```
+
+### Configure Server Port
+
+```scala
+Global / serverPort := 6000
+```
+
+### Disable SuperShell
+
+```scala
+Global / useSuperShell := false
+```
+
+### Add Custom On-Load Hook
+
+```scala
+Global / onLoad := (Global / onLoad).value.andThen { state =>
+  println("Build loaded!")
+  state
+}
+```
+
+### Keep Specific Files During Clean
+
+```scala
+cleanKeepFiles += baseDirectory.value / "data" / "cache.db"
+```
+
+<Note>
+  The CorePlugin is fundamental to sbt's operation. Its settings control the build engine itself, so modifying them should be done carefully. Most settings have sensible defaults that work for typical builds.
+</Note>
+
+## Related Plugins
+
+- [IvyPlugin](/reference/plugins/ivy-plugin) - Builds on CorePlugin to add dependency management
+- [JvmPlugin](/reference/plugins/jvm-plugin) - Adds JVM-specific compilation and execution capabilities
+
+## Source
+
+CorePlugin implementation: `sbt.plugins.CorePlugin`

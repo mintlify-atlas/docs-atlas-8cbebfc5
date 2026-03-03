@@ -1,0 +1,576 @@
+---
+title: Multi-Project Builds
+description: Creating and managing builds with multiple subprojects using aggregation and dependencies
+---
+
+## Overview
+
+Multi-project builds allow you to organize related projects within a single build. This is useful for modular applications, libraries with multiple components, or monorepo structures.
+
+## Defining Projects
+
+From the sbt source (main-settings/src/main/scala/sbt/Project.scala:129-154):
+
+```scala
+sealed trait Project extends ProjectDefinition[ProjectReference] {
+  /** Adds classpath dependencies on internal or external projects. */
+  def dependsOn(deps: ClasspathDep[ProjectReference]*): Project =
+    copy(dependencies = dependencies ++ deps)
+
+  /** Adds projects to be aggregated. */
+  def aggregate(refs: ProjectReference*): Project =
+    copy(aggregate = (aggregate: Seq[ProjectReference]) ++ refs)
+
+  /** Appends settings to the current settings sequence. */
+  def settings(ss: Def.SettingsDefinition*): Project =
+    copy(settings = (settings: Seq[Def.Setting[?]]) ++ Def.settings(ss*))
+
+  /** Sets the base directory for this project. */
+  infix def in(dir: File): Project = copy(base = dir)
+}
+```
+
+### Basic Multi-Project Structure
+
+```scala
+// Define multiple projects
+lazy val root = (project in file("."))
+  .aggregate(core, util, app)
+  .settings(
+    name := "my-project-root"
+  )
+
+lazy val core = project
+  .in(file("core"))
+  .settings(
+    name := "core",
+    libraryDependencies += "org.typelevel" %% "cats-core" % "2.10.0"
+  )
+
+lazy val util = project
+  .in(file("util"))
+  .dependsOn(core)
+  .settings(
+    name := "util"
+  )
+
+lazy val app = project
+  .in(file("app"))
+  .dependsOn(core, util)
+  .settings(
+    name := "app",
+    mainClass := Some("com.example.Main")
+  )
+```
+
+Directory structure:
+```
+my-project/
+├── build.sbt
+├── core/
+│   └── src/main/scala/
+├── util/
+│   └── src/main/scala/
+└── app/
+    └── src/main/scala/
+```
+
+## Project References
+
+### Using `project in file(...)`
+
+The `in` method sets the base directory for a project:
+
+```scala
+lazy val core = project.in(file("core"))
+// Equivalent to:
+lazy val core = project in file("core")
+```
+
+<Note>
+If the project identifier matches the directory name, you can omit `.in(file("name"))`:
+
+```scala
+lazy val core = project  // Uses directory "core/"
+```
+</Note>
+
+## Aggregation
+
+Aggregation means that running a task on an aggregate project also runs it on aggregated projects.
+
+From the sbt build.sbt:164-168:
+
+```scala
+lazy val sbtRoot: Project = (project in file("."))
+  .aggregate(
+    (allProjects diff Seq(lmCoursierShaded))
+      .map(p => LocalProject(p.id))*
+  )
+```
+
+### How Aggregation Works
+
+```scala
+lazy val root = (project in file("."))
+  .aggregate(core, util)
+
+lazy val core = project
+lazy val util = project
+```
+
+When you run `sbt root/compile`:
+1. Compiles `core`
+2. Compiles `util`  
+3. Compiles `root`
+
+<Tip>
+Aggregation is transitive: if A aggregates B and B aggregates C, then running a task on A runs it on B and C.
+</Tip>
+
+### Selective Aggregation
+
+```scala
+lazy val root = (project in file("."))
+  .aggregate(core, util)
+  .settings(
+    // Disable aggregation for specific tasks
+    publish / aggregate := false,
+    publishLocal / aggregate := false
+  )
+```
+
+## Project Dependencies
+
+### Using `dependsOn`
+
+The `dependsOn` method creates a classpath dependency between projects:
+
+```scala
+lazy val core = project
+
+lazy val util = project
+  .dependsOn(core)
+  // util can now use classes from core
+```
+
+From build.sbt:241-243:
+
+```scala
+val collectionProj = project
+  .in(file("util-collection"))
+  .dependsOn(utilPosition, utilCore)
+```
+
+### Configuration-Specific Dependencies
+
+```scala
+lazy val core = project
+
+lazy val testUtil = project
+  .dependsOn(core % "test->test")  // testUtil tests depend on core tests
+
+lazy val app = project
+  .dependsOn(
+    core % "compile->compile",      // Default
+    testUtil % "test->compile"       // app tests depend on testUtil compile
+  )
+```
+
+Common dependency configurations:
+- `"compile->compile"` - Default, production code depends on production code
+- `"test->test"` - Test code depends on test code
+- `"test->compile"` - Test code depends on production code
+- `"compile->test"` - Rarely used, production depends on test code
+
+### Classpath Dependencies
+
+From the sbt source (main-settings/src/main/scala/sbt/ClasspathDep.scala):
+
+```scala
+sealed trait ClasspathDep[PR <: ProjectReference] {
+  def project: PR
+  def configuration: Option[String]
+}
+```
+
+Create custom classpath dependencies:
+
+```scala
+lazy val app = project
+  .dependsOn(
+    core,
+    util % "compile->compile;test->test",
+    integration % "it->compile"
+  )
+```
+
+## Real-World Example from sbt
+
+From build.sbt, the sbt project structure:
+
+```scala
+lazy val sbtRoot: Project = (project in file("."))
+  .aggregate(
+    (allProjects diff Seq(lmCoursierShaded))
+      .map(p => LocalProject(p.id))*
+  )
+  .settings(
+    minimalSettings,
+    Utils.noPublish,
+    publishLocal := {},
+    mimaPreviousArtifacts := Set.empty
+  )
+
+lazy val collectionProj = project
+  .in(file("util-collection"))
+  .dependsOn(utilPosition, utilCore)
+  .settings(
+    name := "Collections",
+    testedBaseSettings,
+    libraryDependencies ++= Seq(sjsonNewScalaJson.value),
+    libraryDependencies ++= Seq(scalaPar),
+    mimaSettings,
+    conflictWarning := ConflictWarning.disable
+  )
+
+lazy val bundledLauncherProj =
+  (project in file("launch"))
+    .enablePlugins(SbtLauncherPlugin)
+    .settings(
+      minimalSettings,
+      inConfig(Compile)(Transform.configSettings)
+    )
+    .settings(
+      name := "sbt-launch",
+      moduleName := "sbt-launch",
+      description := "sbt application launcher",
+      autoScalaLibrary := false,
+      crossPaths := false
+    )
+```
+
+## Project References Types
+
+### LocalProject
+
+References a project in the current build by ID:
+
+```scala
+lazy val core = project
+
+lazy val app = project
+  .dependsOn(LocalProject("core"))  // Reference by ID
+```
+
+### RootProject
+
+References the root project of another build:
+
+```scala
+lazy val app = project
+  .dependsOn(RootProject(file("../other-project")))
+```
+
+### ProjectRef
+
+References a specific project in another build:
+
+```scala
+lazy val app = project
+  .dependsOn(ProjectRef(file("../other-build"), "subproject"))
+```
+
+## Cross-Project Settings
+
+### Sharing Settings
+
+Define common settings and reuse them:
+
+```scala
+val commonSettings = Seq(
+  organization := "com.example",
+  scalaVersion := "3.3.1",
+  scalacOptions ++= Seq(
+    "-deprecation",
+    "-feature"
+  )
+)
+
+lazy val core = project
+  .settings(commonSettings)
+  .settings(
+    name := "core"
+  )
+
+lazy val util = project
+  .settings(commonSettings)
+  .settings(
+    name := "util"
+  )
+```
+
+From build.sbt:63-113:
+
+```scala
+def commonSettings: Seq[Setting[?]] = Def.settings(
+  headerLicense := Some(
+    HeaderLicense.Custom(
+      """sbt
+        |Copyright 2023, Scala center
+        |Copyright 2011 - 2022, Lightbend, Inc.
+        |Copyright 2008 - 2010, Mark Harrah
+        |Licensed under Apache License 2.0 (see LICENSE)
+        |""".stripMargin
+    )
+  ),
+  scalaVersion := baseScalaVersion,
+  evictionErrorLevel := Level.Info,
+  resolvers += Resolver.sonatypeCentralSnapshots,
+  testFrameworks += TestFramework("hedgehog.sbt.Framework"),
+  // ...
+)
+
+def baseSettings: Seq[Setting[?]] =
+  minimalSettings ++ 
+  Seq(Utils.projectComponent) ++ 
+  Utils.baseScalacOptions ++ 
+  Licensed.settings
+```
+
+### ThisBuild Settings
+
+Settings that apply to all projects:
+
+```scala
+ThisBuild / organization := "com.example"
+ThisBuild / version := "1.0.0"
+ThisBuild / scalaVersion := "3.3.1"
+
+lazy val core = project  // Inherits ThisBuild settings
+lazy val util = project  // Inherits ThisBuild settings
+```
+
+## Project Configuration
+
+### Adding Configurations
+
+From ProjectExtra.scala:162-175:
+
+```scala
+extension (self: Project)
+  /** Adds configurations to this project. */
+  def overrideConfigs(cs: Configuration*): Project =
+    self.copy(
+      configurations = Defaults.overrideConfigs(cs*)(self.configurations),
+    )
+
+  /** Adds configuration at the *start* of the configuration list. */
+  private[sbt] def prefixConfigs(cs: Configuration*): Project =
+    self.copy(
+      configurations = Defaults.overrideConfigs(self.configurations*)(cs),
+    )
+```
+
+Custom configurations:
+
+```scala
+val IntegrationTest = config("it") extend(Test)
+
+lazy val app = project
+  .configs(IntegrationTest)
+  .settings(
+    inConfig(IntegrationTest)(Defaults.testSettings)
+  )
+```
+
+## Navigating Projects
+
+In the sbt shell:
+
+```bash
+# List all projects
+sbt> projects
+
+# Switch to a project
+sbt> project core
+
+# Run task on specific project
+sbt> core/compile
+sbt> util/test
+
+# Run task on all projects
+sbt> compile  # From root, compiles all aggregated projects
+```
+
+## Build-Level Settings
+
+### Commands and Hooks
+
+```scala
+lazy val root = (project in file("."))
+  .settings(
+    onLoadMessage := {
+      s"""
+        |Welcome to ${name.value} ${version.value}
+        |Type 'help' for available commands
+      """.stripMargin
+    },
+    commands += Command.command("hello") { state =>
+      println("Hello from custom command!")
+      state
+    }
+  )
+```
+
+From build.sbt:171-185:
+
+```scala
+lazy val sbtRoot: Project = (project in file("."))
+  .settings(
+    onLoadMessage := {
+      val version = sys.props("java.specification.version")
+      """           __    __
+        |     _____/ /_  / /_
+        |    / ___/ __ \/ __/
+        |   (__  ) /_/ / /_
+        |  /____/_.___/\__/
+        |Welcome to the build for sbt.
+        |""".stripMargin +
+        (if (version != "17")
+           s"""!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+               |  Java version is $version. We recommend java 17.
+               |!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!""".stripMargin
+         else "")
+    }
+  )
+```
+
+## Auto Plugins
+
+### Enabling Plugins per Project
+
+```scala
+lazy val core = project
+  .enablePlugins(ScalafmtPlugin, MimaPlugin)
+  .disablePlugins(AssemblyPlugin)
+
+lazy val app = project
+  .enablePlugins(JavaAppPackaging, DockerPlugin)
+```
+
+## Practical Patterns
+
+### Library with Multiple Modules
+
+```scala
+lazy val root = (project in file("."))
+  .aggregate(core, io, http)
+  .settings(
+    publish / skip := true  // Don't publish root
+  )
+
+lazy val core = project
+  .settings(
+    name := "mylib-core",
+    libraryDependencies += "org.typelevel" %% "cats-core" % "2.10.0"
+  )
+
+lazy val io = project
+  .dependsOn(core)
+  .settings(
+    name := "mylib-io",
+    libraryDependencies += "co.fs2" %% "fs2-io" % "3.9.3"
+  )
+
+lazy val http = project
+  .dependsOn(core, io)
+  .settings(
+    name := "mylib-http",
+    libraryDependencies += "org.http4s" %% "http4s-dsl" % "0.23.23"
+  )
+```
+
+### Application with Service Modules
+
+```scala
+lazy val root = (project in file("."))
+  .aggregate(domain, database, api, app)
+  .settings(
+    publish / skip := true
+  )
+
+lazy val domain = project
+  .settings(
+    name := "domain",
+    libraryDependencies += "org.typelevel" %% "cats-core" % "2.10.0"
+  )
+
+lazy val database = project
+  .dependsOn(domain)
+  .settings(
+    name := "database",
+    libraryDependencies += "org.tpolecat" %% "doobie-core" % "1.0.0-RC4"
+  )
+
+lazy val api = project
+  .dependsOn(domain, database)
+  .settings(
+    name := "api",
+    libraryDependencies += "org.http4s" %% "http4s-dsl" % "0.23.23"
+  )
+
+lazy val app = project
+  .dependsOn(api)
+  .enablePlugins(JavaAppPackaging)
+  .settings(
+    name := "app",
+    mainClass := Some("com.example.Main")
+  )
+```
+
+## Best Practices
+
+<Note>
+**Aggregate at the root**: Create a root project that aggregates all subprojects for convenient task execution.
+</Note>
+
+<Tip>
+**Use consistent naming**: Name your project identifiers to match directory names for clarity.
+</Tip>
+
+<Warning>
+**Avoid circular dependencies**: Projects cannot depend on each other in a cycle. Structure your dependencies as a DAG (directed acyclic graph).
+</Warning>
+
+<Tip>
+**Share common settings**: Extract common settings into `val`s or use `ThisBuild` scope to avoid repetition.
+</Tip>
+
+```scala
+// Good - DRY principle
+val commonSettings = Seq(
+  scalaVersion := "3.3.1",
+  scalacOptions ++= Seq("-deprecation", "-feature")
+)
+
+lazy val core = project.settings(commonSettings)
+lazy val util = project.settings(commonSettings)
+
+// Bad - repetitive
+lazy val core = project.settings(
+  scalaVersion := "3.3.1",
+  scalacOptions ++= Seq("-deprecation", "-feature")
+)
+lazy val util = project.settings(
+  scalaVersion := "3.3.1",
+  scalacOptions ++= Seq("-deprecation", "-feature")
+)
+```
+
+## References
+
+- [Build Definition](./build-definition) - Overall build structure
+- [Dependencies](./dependencies) - Managing library dependencies
+- [Scopes](./scopes) - Understanding project scope axis
+- [Tasks and Settings](./tasks-and-settings) - Per-project configuration

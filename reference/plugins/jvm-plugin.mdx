@@ -1,0 +1,372 @@
+---
+title: JvmPlugin
+description: Plugin for building JVM projects with compilation, testing, and classpath management
+---
+
+The `JvmPlugin` provides core functionality for building JVM-based projects. It includes tasks for compilation, running, testing, and managing classpaths. This plugin is automatically enabled for any project that can use Ivy for dependency management.
+
+## Activation
+
+<ParamField name="Trigger" type="allRequirements">
+  Automatically enabled on all projects
+</ParamField>
+
+<ParamField name="Requires" type="IvyPlugin">
+  Depends on IvyPlugin for dependency resolution
+</ParamField>
+
+## Overview
+
+JvmPlugin is the foundation for JVM project builds in sbt. It provides:
+
+- **Compilation**: Scala and Java source compilation
+- **Execution**: Running main classes and forked processes
+- **Testing**: Test discovery, execution, and frameworks
+- **Classpaths**: Managed and unmanaged classpath construction
+- **Configurations**: Standard Compile, Test, and Runtime configurations
+
+## Configurations
+
+JvmPlugin defines standard configurations via `Configurations.default`:
+
+- **Compile**: Main source code and production dependencies
+- **Test**: Test source code and test dependencies
+- **Runtime**: Dependencies needed at runtime
+- **Provided**: Compile-time only dependencies
+- **Optional**: Optional dependencies
+- **IntegrationTest**: Integration test configuration
+
+## Global Settings
+
+Provided through `globalJvmCore`:
+
+### Scala Configuration
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `scalaOrganization` | `String` | `"org.scala-lang"` | Organization for Scala artifacts |
+| `scalaArtifacts` | `Seq[String]` | Standard artifacts | Scala artifact names |
+| `autoScalaLibrary` | `Boolean` | `true` | Automatically add Scala library dependency |
+| `managedScalaInstance` | `Boolean` | `true` | Use managed Scala instance |
+| `scalaHome` | `Option[File]` | `None` | Override Scala location |
+| `crossPaths` | `Boolean` | `true` | Enable cross-version source paths |
+
+### Java Configuration
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `javaHome` | `Option[File]` | `None` | Override Java home location |
+| `discoveredJavaHomes` | `Map[String, File]` | Auto-discovered | Available Java installations |
+| `javaHomes` | `Map[String, File]` | Empty map | User-specified Java homes |
+| `fullJavaHomes` | `Map[String, File]` | Merged | All available Java homes |
+| `javaOptions` | `Seq[String]` | `Nil` | JVM options for forked processes |
+
+### Compilation
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `compilerCache` | `CompilerCache` | Fresh cache | Caches Scala/Java compilers |
+| `autoCompilerPlugins` | `Boolean` | `true` | Automatically add compiler plugins |
+| `allowMachinePath` | `Boolean` | `true` | Allow machine-specific paths in output |
+| `reportAbsolutePath` | `Boolean` | `true` | Report absolute paths in errors |
+
+### Source Management
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `sourcesInBase` | `Boolean` | `true` | Include .scala files in base directory |
+| `unmanagedSources / includeFilter` | `FileFilter` | `"*.java" \| "*.scala"` | Filter for source files |
+| `sourcePositionMappers` | `Seq[PositionMapper]` | `Nil` | Map source positions in errors |
+
+### Testing
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `testForkedParallel` | `Boolean` | `true` | Run forked tests in parallel |
+| `testForkedParallelism` | `Option[Int]` | `None` | Max parallel test executions |
+
+### ClassPath & JARs
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `unmanagedJars / includeFilter` | `FileFilter` | JARs, SOs, DLLs, etc. | Filter for unmanaged JARs |
+| `unmanagedResources / includeFilter` | `FileFilter` | `AllPassFilter` | Filter for resources |
+
+### Background Jobs
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `bgList` | `Task[Seq[JobHandle]]` | Current jobs | List running background jobs |
+| `bgStop` | `InputTask[Unit]` | Stop implementation | Stop background job(s) |
+| `bgWaitFor` | `InputTask[Unit]` | Wait implementation | Wait for background job |
+| `bgCopyClasspath` | `Boolean` | `true` | Copy classpath for background jobs |
+
+### ClassLoader Management
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `closeClassLoaders` | `Boolean` | From system property | Close class loaders after tasks |
+| `allowZombieClassLoaders` | `Boolean` | `true` | Allow unreferenced class loaders |
+
+### API Documentation
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `autoAPIMappings` | `Boolean` | `false` | Automatically generate API mappings |
+| `apiMappings` | `Map[File, URL]` | Empty map | Map JARs to API documentation URLs |
+| `apiURL` | `Option[URL]` | `None` | API documentation URL |
+| `releaseNotesURL` | `Option[URL]` | `None` | Release notes URL |
+
+### Packaging
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `packageTimestamp` | `Long` | Platform-dependent | Timestamp for reproducible packages |
+| `packageSrc / artifactClassifier` | `Option[String]` | `Some("sources")` | Classifier for source JARs |
+| `packageDoc / artifactClassifier` | `Option[String]` | `Some("javadoc")` | Classifier for documentation JARs |
+
+### Plugin Development
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `sbtPlugin` | `Boolean` | `false` | Is this an sbt plugin project? |
+| `isMetaBuild` | `Boolean` | `false` | Is this a meta-build project? |
+| `reresolveSbtArtifacts` | `Boolean` | `false` | Re-resolve sbt artifacts on reload |
+
+### Incremental Compilation
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `extraIncOptions` | `Seq[(String, String)]` | Java class version | Extra options for incremental compiler |
+
+### File Conversion
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `rootPaths` | `Map[String, Path]` | Standard roots | Root paths for file conversion |
+| `fileConverter` | `FileConverter` | MappedFileConverter | Converts between absolute and virtual paths |
+
+### Trace Levels
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `run / traceLevel` | `Int` | `0` | Trace level for run task |
+| `runMain / traceLevel` | `Int` | `0` | Trace level for runMain |
+| `bgRun / traceLevel` | `Int` | `0` | Trace level for background runs |
+| `console / traceLevel` | `Int` | `Int.MaxValue` | Trace level for console |
+
+## Build Settings
+
+Provided through `buildLevelJvmSettings`:
+
+<ParamField name="rootOutputDirectory" type="Path">
+  The root output directory for the entire build, typically `target` at the build root.
+</ParamField>
+
+## Project Settings
+
+JvmPlugin combines multiple setting groups:
+
+### Source Paths
+
+From `paths`:
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `sourceDirectory` | `File` | `baseDirectory / "src"` | Root source directory |
+| `sourceManaged` | `File` | `target / "src_managed"` | Generated source directory |
+| `resourceManaged` | `File` | `target / "resource_managed"` | Generated resource directory |
+| `historyPath` | `Option[File]` | Output directory `.history` | Command history file location |
+
+### Compilation Tasks
+
+From `compileBase`:
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `scalaInstance` | `Task[ScalaInstance]` | Auto-configured | Scala compiler instance |
+| `scalaInstanceConfig` | `Task[ScalaInstanceConfig]` | Auto-configured | Scala instance configuration |
+| `scalaCompilerBridgeJars` | `Task[Seq[File]]` | Auto-resolved | Compiler bridge JARs |
+| `scalaCompilerBridgeSource` | `ModuleID` | Default bridge | Compiler bridge module dependency |
+| `classpathOptions` | `ClasspathOptions` | Auto-configured | Classpath filtering options |
+| `clean` | `Task[Unit]` | Clean implementation | Clears compilation artifacts |
+| `crossTarget` | `File` | `target` | Cross-version target directory |
+| `crossVersion` | `CrossVersion` | Based on `crossPaths` | Cross-version strategy |
+| `crossSbtVersions` | `Seq[String]` | Current sbt version | sbt versions for cross-building plugins |
+
+### Running & Execution
+
+From `runnerSettings`:
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `run` | `InputTask[Unit]` | Main class runner | Run a main class |
+| `runMain` | `InputTask[Unit]` | Named main runner | Run a specific main class |
+| `runner` | `Task[ScalaRun]` | Runner instance | Runs Scala/Java code |
+
+### Base Tasks
+
+From `baseTasks`:
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `clean` | `Task[Unit]` | Clean files task | Delete build outputs |
+| `cleanFiles` | `Seq[File]` | Computed | Files to delete on clean |
+| `update` | `Task[UpdateReport]` | From IvyPlugin | Resolve and retrieve dependencies |
+| `console` | `Task[Unit]` | Scala REPL | Start an interactive Scala console |
+| `consoleQuick` | `Task[Unit]` | Quick console | Console without compiling dependencies |
+| `consoleProject` | `Task[Unit]` | Project console | Console with project classes |
+
+### Configuration-Specific Settings
+
+From `defaultConfigs`, applied to Compile, Test, and Runtime:
+
+#### Compile Configuration
+
+| Setting | Type | Description |
+|---------|------|-------------|
+| `compile` | `Task[CompileAnalysis]` | Compile sources |
+| `compileIncremental` | `Task[CompileResult]` | Incremental compilation |
+| `javacOptions` | `Seq[String]` | Java compiler options |
+| `scalacOptions` | `Seq[String]` | Scala compiler options |
+| `sources` | `Task[Seq[File]]` | All source files |
+| `unmanagedSources` | `Task[Seq[File]]` | Unmanaged sources |
+| `managedSources` | `Task[Seq[File]]` | Generated sources |
+| `sourceDirectories` | `Seq[File]` | Source directories |
+| `scalaSource` | `File` | Scala source directory |
+| `javaSource` | `File`` | Java source directory |
+| `resourceDirectory` | `File` | Resource directory |
+| `resources` | `Task[Seq[File]]` | All resource files |
+| `classDirectory` | `File` | Compiled class output |
+| `products` | `Task[Seq[File]]` | Compilation products |
+| `fullClasspath` | `Task[Classpath]` | Complete classpath |
+| `internalDependencyClasspath` | `Task[Classpath]` | Inter-project dependencies |
+| `externalDependencyClasspath` | `Task[Classpath]` | External dependencies |
+| `unmanagedClasspath` | `Task[Classpath]` | Unmanaged JARs |
+| `managedClasspath` | `Task[Classpath]` | Managed dependencies |
+| `exportedProducts` | `Task[Classpath]` | Products exported to dependents |
+| `copyResources` | `Task[Seq[(File, File)]]` | Copy resources to output |
+| `sourceGenerators` | `Seq[Task[Seq[File]]]` | Tasks generating sources |
+| `resourceGenerators` | `Seq[Task[Seq[File]]]` | Tasks generating resources |
+| `mainClass` | `Option[String]` | Main class to run |
+| `discoveredMainClasses` | `Task[Seq[String]]` | All discovered main classes |
+| `selectMainClass` | `Task[Option[String]]` | Select which main class to run |
+
+#### Test Configuration
+
+Includes all compile settings plus:
+
+| Setting | Type | Description |
+|---------|------|-------------|
+| `test` | `Task[Unit]` | Run all tests |
+| `testOnly` | `InputTask[Unit]` | Run specific tests by name |
+| `testQuick` | `Task[Unit]` | Run tests affected by changes |
+| `testSelected` | `InputTask[Unit]` | Interactively select tests |
+| `testFrameworks` | `Seq[TestFramework]` | Available test frameworks |
+| `testListeners` | `Seq[TestReportListener]` | Test result listeners |
+| `testOptions` | `Seq[TestOption]` | Test execution options |
+| `testLoader` | `Task[ClassLoader]` | Class loader for tests |
+| `loadedTestFrameworks` | `Task[Map[TestFramework, Framework]]` | Loaded framework instances |
+| `definedTests` | `Task[Seq[TestDefinition]]` | Discovered test definitions |
+| `definedTestNames` | `Task[Seq[String]]` | Test names |
+| `executeTests` | `Task[Tests.Output]` | Execute test suites |
+| `testResultLogger` | `TestResultLogger` | Logger for test results |
+
+#### Runtime Configuration
+
+Includes classpath settings for runtime execution.
+
+## Usage Examples
+
+### Configure Java Version
+
+```scala
+javacOptions ++= Seq("-source", "11", "-target", "11")
+```
+
+### Add Scala Compiler Options
+
+```scala
+scalacOptions ++= Seq(
+  "-deprecation",
+  "-feature",
+  "-Xfatal-warnings"
+)
+```
+
+### Set Main Class
+
+```scala
+Compile / mainClass := Some("com.example.Main")
+```
+
+### Configure Test Parallelism
+
+```scala
+Test / testForkedParallelism := Some(4)
+```
+
+### Add Unmanaged JAR Directory
+
+```scala
+Compile / unmanagedJars := (baseDirectory.value / "lib" ** "*.jar").classpath
+```
+
+### Disable Source in Base Directory
+
+```scala
+sourcesInBase := false
+```
+
+### Fork JVM for Running
+
+```scala
+fork := true
+javaOptions ++= Seq("-Xmx2G", "-Xms512M")
+```
+
+### Add Custom Test Framework
+
+```scala
+Test / testFrameworks += new TestFramework("com.example.CustomFramework")
+```
+
+### Configure API Mappings
+
+```scala
+autoAPIMappings := true
+apiURL := Some(url("https://www.scala-lang.org/api/current/"))
+```
+
+## Configuration Scoping
+
+Most JvmPlugin settings are configuration-scoped. Access them with:
+
+```scala
+// Compile configuration
+Compile / sourceDirectory
+Compile / compile
+Compile / run
+
+// Test configuration  
+Test / sourceDirectory
+Test / test
+Test / testOnly
+
+// Runtime configuration
+Runtime / fullClasspath
+```
+
+<Note>
+  JvmPlugin is essential for all JVM-based sbt projects. It works together with IvyPlugin to provide complete dependency management and build capabilities for Scala and Java projects.
+</Note>
+
+## Related Plugins
+
+- [CorePlugin](/reference/plugins/core-plugin) - Provides fundamental build infrastructure
+- [IvyPlugin](/reference/plugins/ivy-plugin) - Required dependency, provides Ivy dependency resolution
+- [SbtPlugin](/reference/plugins/sbt-plugin) - Extends JvmPlugin for sbt plugin development
+
+## Source
+
+JvmPlugin implementation: `sbt.plugins.JvmPlugin`

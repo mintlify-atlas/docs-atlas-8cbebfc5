@@ -1,0 +1,394 @@
+---
+title: Testing
+description: Learn how to configure and run tests in sbt projects
+---
+
+This guide covers how to configure test frameworks, run tests, and customize testing behavior in sbt.
+
+## Test Frameworks
+
+sbt supports multiple test frameworks through the standardized test interface:
+
+```scala build.sbt
+libraryDependencies ++= Seq(
+  "org.scalatest" %% "scalatest" % "3.2.17" % Test,
+  "org.scalacheck" %% "scalacheck" % "1.17.0" % Test,
+  "org.scalatestplus" %% "scalacheck-1-17" % "3.2.17.0" % Test
+)
+```
+
+### Registering Test Frameworks
+
+Test frameworks are registered using the `testFrameworks` setting:
+
+```scala build.sbt
+testFrameworks += new TestFramework("hedgehog.sbt.Framework")
+testFrameworks += new TestFramework("verify.runner.Framework")
+```
+
+<Note>
+Most popular test frameworks are automatically discovered. You only need to register custom frameworks.
+</Note>
+
+## Running Tests
+
+sbt provides several tasks for running tests:
+
+<CodeGroup>
+```bash Basic Test Commands
+# Run all tests
+sbt test
+
+# Run all tests (alias)
+sbt testFull
+
+# Run specific test classes
+sbt "testOnly com.example.MySpec"
+
+# Run tests matching a pattern
+sbt "testOnly *UserSpec"
+
+# Run multiple test classes
+sbt "testOnly com.example.UserSpec com.example.OrderSpec"
+```
+
+```bash Quick Test Commands
+# Run only failed tests
+sbt testQuick
+
+# Run tests affected by code changes
+sbt testQuick
+```
+</CodeGroup>
+
+## Test Configuration
+
+### Test Options
+
+Configure test execution using `testOptions`:
+
+```scala build.sbt
+Test / testOptions += Tests.Argument("-oD")
+
+Test / testOptions += Tests.Argument(TestFrameworks.ScalaTest, "-oD", "-u", "target/test-reports")
+
+Test / testOptions += Tests.Argument(TestFrameworks.ScalaCheck, "-verbosity", "2")
+```
+
+### Common Test Options
+
+<CodeGroup>
+```scala ScalaTest Options
+Test / testOptions ++= Seq(
+  Tests.Argument(TestFrameworks.ScalaTest, 
+    "-oD",                    // Show test durations
+    "-u", "target/test-reports",  // JUnit XML output
+    "-h", "target/test-html"      // HTML report
+  )
+)
+```
+
+```scala ScalaCheck Options  
+Test / testOptions ++= Seq(
+  Tests.Argument(TestFrameworks.ScalaCheck,
+    "-verbosity", "2",         // Verbosity level
+    "-workers", "4",            // Parallel workers
+    "-minSuccessfulTests", "1000"  // Minimum successful tests
+  )
+)
+```
+
+```scala JUnit Options
+Test / testOptions += Tests.Argument(TestFrameworks.JUnit, 
+  "--verbosity=2",
+  "--include-tags=fast"
+)
+```
+</CodeGroup>
+
+## Test Execution Settings
+
+### Parallel Execution
+
+Control parallel test execution:
+
+```scala build.sbt
+// Enable parallel test execution within the JVM
+Test / parallelExecution := true
+
+// Disable parallel execution
+Test / parallelExecution := false
+
+// Control forked parallel execution
+Test / testForkedParallel := true
+
+// Set number of parallel threads
+Test / testForkedParallelism := Some(4)
+```
+
+<Warning>
+Parallel execution can cause issues with tests that share mutable state or resources.
+</Warning>
+
+### Forking Tests
+
+Run tests in a forked JVM:
+
+```scala build.sbt
+// Fork tests
+Test / fork := true
+
+// Configure fork options
+Test / javaOptions ++= Seq(
+  "-Xmx2G",
+  "-XX:+UseG1GC"
+)
+
+// Set working directory for forked tests
+Test / baseDirectory := file(".")
+```
+
+## Test Grouping
+
+Group tests and configure forking per group:
+
+```scala build.sbt
+Test / testGrouping := {
+  val tests = (Test / definedTests).value
+  tests.groupBy(_.name.take(1)).map {
+    case (letter, group) =>
+      Tests.Group(
+        name = s"Group-$letter",
+        tests = group,
+        runPolicy = Tests.SubProcess(
+          ForkOptions().withRunJVMOptions(
+            Vector("-Xmx1G")
+          )
+        )
+      )
+  }.toSeq
+}
+```
+
+## Test Listeners
+
+Customize test reporting with test listeners:
+
+```scala build.sbt
+Test / testListeners += new TestReportListener {
+  override def startGroup(name: String): Unit = 
+    println(s"Starting test group: $name")
+    
+  override def testEvent(event: TestEvent): Unit = 
+    event.detail.foreach { detail =>
+      println(s"Test: ${detail.fullyQualifiedName}")
+    }
+}
+```
+
+## JUnit XML Reports
+
+Generate JUnit-compatible XML reports:
+
+```scala build.sbt
+Test / testOptions += Tests.Argument(
+  TestFrameworks.ScalaTest,
+  "-u", "target/test-reports"
+)
+```
+
+This creates XML reports in `target/test-reports/` that CI systems can parse.
+
+## Test Sources and Resources
+
+Configure test source directories:
+
+```scala build.sbt
+// Default test source directory
+Test / scalaSource := baseDirectory.value / "src" / "test" / "scala"
+
+// Additional test source directories
+Test / unmanagedSourceDirectories += baseDirectory.value / "src" / "it" / "scala"
+
+// Test resources
+Test / resourceDirectory := baseDirectory.value / "src" / "test" / "resources"
+```
+
+## Custom Test Configurations
+
+Create custom test configurations for integration tests:
+
+<Steps>
+  <Step title="Define the configuration">
+    ```scala project/CustomTest.scala
+    import sbt._
+    import Keys._
+
+    object CustomTest {
+      lazy val IntegrationTest = config("it") extend Test
+    }
+    ```
+  </Step>
+  
+  <Step title="Configure in build.sbt">
+    ```scala build.sbt
+    lazy val root = project
+      .configs(IntegrationTest)
+      .settings(
+        inConfig(IntegrationTest)(Defaults.testSettings),
+        IntegrationTest / scalaSource := baseDirectory.value / "src" / "it" / "scala"
+      )
+    ```
+  </Step>
+  
+  <Step title="Run integration tests">
+    ```bash
+    sbt IntegrationTest/test
+    ```
+  </Step>
+</Steps>
+
+## Test Filtering
+
+Filter which tests to run:
+
+```scala build.sbt
+// Define a filter function
+Test / testFilter := { (name: String) =>
+  name.endsWith("Spec") || name.endsWith("Test")
+}
+
+// Or use testOnly from command line
+// sbt "testOnly *Spec"
+```
+
+## Test Classpath
+
+Configure the test classpath:
+
+```scala build.sbt
+// Add extra classpath entries for tests
+Test / unmanagedClasspath += baseDirectory.value / "test-lib" / "special.jar"
+
+// View test classpath
+// sbt "show Test/fullClasspath"
+```
+
+## Code Coverage
+
+While sbt doesn't include coverage built-in, you can use plugins:
+
+```scala project/plugins.sbt
+addSbtPlugin("org.scoverage" % "sbt-scoverage" % "2.0.9")
+```
+
+```bash
+# Run tests with coverage
+sbt coverage test
+
+# Generate coverage report  
+sbt coverageReport
+```
+
+## Debugging Tests
+
+<CodeGroup>
+```scala Enable Debug Output
+Test / testOptions += Tests.Argument("-oD")
+```
+
+```scala Fork with Debug Port
+Test / javaOptions += "-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=5005"
+```
+
+```bash Run Specific Test
+sbt "testOnly com.example.MySpec"
+```
+</CodeGroup>
+
+## Test Logging
+
+Control test output:
+
+```scala build.sbt
+// Buffer test output
+Test / logBuffered := false
+
+// Show success messages
+Test / showSuccess := true
+
+// Show test durations
+Test / showTiming := true
+```
+
+## Common Testing Patterns
+
+### Property-Based Testing
+
+```scala build.sbt
+libraryDependencies ++= Seq(
+  "org.scalacheck" %% "scalacheck" % "1.17.0" % Test
+)
+
+Test / testOptions += Tests.Argument(
+  TestFrameworks.ScalaCheck,
+  "-minSuccessfulTests", "1000",
+  "-workers", "4"
+)
+```
+
+### Behavior-Driven Development
+
+```scala build.sbt
+libraryDependencies ++= Seq(
+  "org.scalatest" %% "scalatest" % "3.2.17" % Test
+)
+
+Test / testOptions += Tests.Argument(
+  TestFrameworks.ScalaTest,
+  "-oD"
+)
+```
+
+## CI/CD Integration
+
+Configure tests for continuous integration:
+
+```scala build.sbt
+// Generate machine-readable reports
+Test / testOptions += Tests.Argument(
+  TestFrameworks.ScalaTest,
+  "-u", "target/test-reports",
+  "-o"
+)
+
+// Fail fast in CI
+Test / testOptions += Tests.Argument("-oF")
+
+// Set test timeout
+Test / testOptions += Tests.Argument("-W", "120", "60")
+```
+
+## Best Practices
+
+<Steps>
+  <Step title="Organize test code">
+    Keep test code in `src/test/scala` and integration tests in separate configurations.
+  </Step>
+  
+  <Step title="Use appropriate scoping">
+    Scope all test dependencies with `% Test` to keep them out of production.
+  </Step>
+  
+  <Step title="Enable JUnit reports for CI">
+    Generate JUnit XML reports for integration with CI systems.
+  </Step>
+  
+  <Step title="Consider parallel execution carefully">
+    Only enable parallel execution if your tests are thread-safe.
+  </Step>
+  
+  <Step title="Fork when needed">
+    Fork tests that need isolation or specific JVM settings.
+  </Step>
+</Steps>

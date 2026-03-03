@@ -1,122 +1,122 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "theme": "mint",
-  "name": "Mint Starter Kit",
+  "name": "sbt",
+  "theme": "aspen",
   "colors": {
-    "primary": "#16A34A",
-    "light": "#07C983",
-    "dark": "#15803D"
+    "primary": "#DC322F",
+    "light": "#E35D5B",
+    "dark": "#B02A27"
   },
-  "favicon": "/favicon.svg",
+  "navbar": {
+    "primary": {
+      "type": "github",
+      "href": "https://github.com/sbt/sbt"
+    }
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/sbt/sbt"
+    }
+  },
   "navigation": {
     "tabs": [
       {
-        "tab": "Guides",
+        "tab": "Documentation",
         "groups": [
           {
-            "group": "Getting started",
+            "group": "Getting Started",
             "pages": [
-              "index",
-              "quickstart",
-              "development"
+              "introduction",
+              "installation",
+              "quickstart"
             ]
           },
           {
-            "group": "Customization",
+            "group": "Core Concepts",
             "pages": [
-              "essentials/settings",
-              "essentials/navigation"
+              "concepts/build-definition",
+              "concepts/tasks-and-settings",
+              "concepts/scopes",
+              "concepts/dependencies",
+              "concepts/multi-project-builds"
             ]
           },
           {
-            "group": "Writing content",
+            "group": "Guides",
             "pages": [
-              "essentials/markdown",
-              "essentials/code",
-              "essentials/images",
-              "essentials/reusable-snippets"
-            ]
-          },
-          {
-            "group": "AI tools",
-            "pages": [
-              "ai-tools/cursor",
-              "ai-tools/claude-code",
-              "ai-tools/windsurf"
+              "guides/configuring-scala",
+              "guides/library-dependencies",
+              "guides/testing",
+              "guides/publishing",
+              "guides/cross-building",
+              "guides/incremental-compilation"
             ]
           }
         ]
       },
       {
-        "tab": "API reference",
+        "tab": "Reference",
         "groups": [
           {
-            "group": "API documentation",
+            "group": "Configuration",
             "pages": [
-              "api-reference/introduction"
+              "reference/settings-and-tasks",
+              "reference/configurations",
+              "reference/directory-structure",
+              "reference/command-line"
             ]
           },
           {
-            "group": "Endpoint examples",
+            "group": "Core Plugins",
             "pages": [
-              "api-reference/endpoint/get",
-              "api-reference/endpoint/create",
-              "api-reference/endpoint/delete",
-              "api-reference/endpoint/webhook"
+              "reference/plugins/core-plugin",
+              "reference/plugins/jvm-plugin",
+              "reference/plugins/ivy-plugin",
+              "reference/plugins/sbt-plugin"
+            ]
+          },
+          {
+            "group": "API Reference",
+            "pages": [
+              "api/keys",
+              "api/defaults",
+              "api/project",
+              "api/build"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Advanced",
+        "groups": [
+          {
+            "group": "Plugin Development",
+            "pages": [
+              "advanced/plugins/creating-plugins",
+              "advanced/plugins/plugin-best-practices",
+              "advanced/plugins/auto-plugins"
+            ]
+          },
+          {
+            "group": "Extending sbt",
+            "pages": [
+              "advanced/task-graph",
+              "advanced/custom-settings",
+              "advanced/build-state",
+              "advanced/commands"
+            ]
+          },
+          {
+            "group": "Internals",
+            "pages": [
+              "advanced/architecture",
+              "advanced/zinc-incremental-compiler",
+              "advanced/build-server-protocol",
+              "advanced/contributing"
             ]
           }
         ]
       }
-    ],
-    "global": {
-      "anchors": [
-        {
-          "anchor": "Documentation",
-          "href": "https://mintlify.com/docs",
-          "icon": "book-open-cover"
-        },
-        {
-          "anchor": "Blog",
-          "href": "https://mintlify.com/blog",
-          "icon": "newspaper"
-        }
-      ]
-    }
-  },
-  "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg"
-  },
-  "navbar": {
-    "links": [
-      {
-        "label": "Support",
-        "href": "mailto:hi@mintlify.com"
-      }
-    ],
-    "primary": {
-      "type": "button",
-      "label": "Dashboard",
-      "href": "https://dashboard.mintlify.com"
-    }
-  },
-  "contextual": {
-    "options": [
-     "copy",
-     "view",
-     "chatgpt",
-     "claude",
-     "perplexity",
-     "mcp",
-     "cursor",
-     "vscode"
-   ]
-  },
-  "footer": {
-    "socials": {
-      "x": "https://x.com/mintlify",
-      "github": "https://github.com/mintlify",
-      "linkedin": "https://linkedin.com/company/mintlify"
-    }
+    ]
   }
 }

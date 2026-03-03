@@ -1,0 +1,403 @@
+---
+title: Cross-Building
+description: Learn how to build and publish your Scala project for multiple Scala versions
+---
+
+This guide explains how to configure cross-building to support multiple Scala versions in a single project.
+
+## What is Cross-Building?
+
+Cross-building allows you to compile, test, and publish your project for multiple Scala versions from a single codebase. This is essential for library authors who want to support users on different Scala versions.
+
+<Note>
+Cross-building is primarily used for Scala libraries. Applications typically target a single Scala version.
+</Note>
+
+## Configuring Cross-Building
+
+### Setting Scala Versions
+
+Define the Scala versions to build against:
+
+```scala build.sbt
+// Primary Scala version
+scalaVersion := "3.3.1"
+
+// Additional Scala versions for cross-building
+crossScalaVersions := Seq("2.12.18", "2.13.12", "3.3.1")
+```
+
+<Tip>
+The `scalaVersion` should typically be included in `crossScalaVersions`.
+</Tip>
+
+## Cross-Building Commands
+
+Use the `+` prefix to execute commands for all Scala versions:
+
+<CodeGroup>
+```bash Compilation
+# Compile for all Scala versions
+sbt +compile
+
+# Clean and compile for all versions
+sbt +clean +compile
+```
+
+```bash Testing
+# Test for all Scala versions
+sbt +test
+
+# Run specific test for all versions
+sbt +"testOnly com.example.MySpec"
+```
+
+```bash Publishing
+# Publish locally for all versions
+sbt +publishLocal
+
+# Publish to remote for all versions
+sbt +publish
+```
+</CodeGroup>
+
+## Switching Scala Versions
+
+The `++` command switches the Scala version:
+
+<Steps>
+  <Step title="Switch to a specific version">
+    ```bash
+    sbt "++2.13.12"
+    ```
+    This switches the build to use Scala 2.13.12.
+  </Step>
+  
+  <Step title="Switch and run a command">
+    ```bash
+    sbt "++2.13.12 compile"
+    ```
+    Switches to 2.13.12 and compiles.
+  </Step>
+  
+  <Step title="Force a version not in crossScalaVersions">
+    ```bash
+    sbt "++2.12.17!"
+    ```
+    The `!` forces the version even if not in `crossScalaVersions`.
+  </Step>
+  
+  <Step title="Use version selectors">
+    ```bash
+    sbt "++2.13.x"
+    ```
+    Selects the latest 2.13.x version from `crossScalaVersions`.
+  </Step>
+</Steps>
+
+## Version-Specific Code
+
+### Source Directories
+
+sbt automatically includes version-specific source directories:
+
+```
+src/
+  main/
+    scala/           # Shared code
+    scala-2.13/      # Scala 2.13 specific
+    scala-2/         # All Scala 2.x versions
+    scala-3/         # Scala 3 specific
+```
+
+Directory matching rules:
+- `scala-2.13/` - Only for Scala 2.13.x
+- `scala-2.12/` - Only for Scala 2.12.x  
+- `scala-2/` - All Scala 2.x versions
+- `scala-3/` - All Scala 3.x versions
+
+### Conditional Dependencies
+
+Add dependencies for specific Scala versions:
+
+```scala build.sbt
+libraryDependencies ++= {
+  CrossVersion.partialVersion(scalaVersion.value) match {
+    case Some((2, 13)) =>
+      Seq(
+        "org.scala-lang.modules" %% "scala-parallel-collections" % "1.0.4"
+      )
+    case Some((3, _)) =>
+      Seq(
+        "org.scala-lang" %% "scala3-library" % scalaVersion.value
+      )
+    case _ => Seq.empty
+  }
+}
+```
+
+### Conditional Compiler Options
+
+```scala build.sbt
+scalacOptions ++= {
+  CrossVersion.partialVersion(scalaVersion.value) match {
+    case Some((2, 13)) =>
+      Seq("-Xlint", "-Ywarn-unused", "-deprecation")
+    case Some((3, _)) =>
+      Seq("-explain", "-deprecation", "-feature")
+    case _ => Seq.empty
+  }
+}
+```
+
+## Cross-Version Patterns
+
+### Using CrossVersion
+
+sbt provides utilities for handling cross-version compatibility:
+
+```scala build.sbt
+import sbt.CrossVersion
+
+// Get binary version
+val binaryVersion = CrossVersion.binaryScalaVersion(scalaVersion.value)
+// "2.13.12" -> "2.13"
+// "3.3.1" -> "3"
+
+// Pattern matching on version
+CrossVersion.partialVersion(scalaVersion.value) match {
+  case Some((2, minor)) if minor >= 13 => // Scala 2.13+
+  case Some((3, _)) => // Scala 3
+  case _ => // Other versions
+}
+```
+
+## Cross-Building Libraries
+
+When building libraries, use `%%` for dependencies:
+
+```scala build.sbt
+libraryDependencies ++= Seq(
+  "org.typelevel" %% "cats-core" % "2.10.0",
+  "co.fs2" %% "fs2-core" % "3.9.3"
+)
+```
+
+The `%%` operator automatically appends the Scala binary version:
+- Scala 2.13: `cats-core_2.13`
+- Scala 3: `cats-core_3`
+
+<Warning>
+Never use `%%` for Java libraries - they don't have Scala version suffixes.
+</Warning>
+
+## Platform-Specific Cross-Building
+
+For Scala.js or Scala Native:
+
+```scala build.sbt
+import sbtcrossproject.CrossPlugin.autoImport.{crossProject, CrossType}
+
+lazy val myProject = crossProject(JVMPlatform, JSPlatform, NativePlatform)
+  .crossType(CrossType.Full)
+  .in(file("."))
+  .settings(
+    scalaVersion := "3.3.1",
+    crossScalaVersions := Seq("2.13.12", "3.3.1")
+  )
+  .jvmSettings(
+    // JVM-specific settings
+  )
+  .jsSettings(
+    // Scala.js specific settings
+  )
+  .nativeSettings(
+    // Scala Native specific settings
+  )
+```
+
+## Cross-Building sbt Plugins
+
+For sbt plugins, cross-build against sbt versions:
+
+```scala build.sbt
+sbtPlugin := true
+
+// sbt binary version to compile against
+pluginCrossBuild / sbtVersion := "2.0.0-M2"
+
+// Support multiple sbt versions
+crossSbtVersions := Seq("2.0.0-M2")
+```
+
+```bash
+# Publish for all sbt versions
+sbt +publish
+```
+
+## Migration Strategies
+
+### Scala 2.13 to Scala 3
+
+<Steps>
+  <Step title="Ensure 2.13 compatibility">
+    Make sure your code compiles on Scala 2.13 with:
+    ```scala
+    scalacOptions += "-Xsource:3"
+    ```
+  </Step>
+  
+  <Step title="Add Scala 3 to crossScalaVersions">
+    ```scala
+    crossScalaVersions := Seq("2.13.12", "3.3.1")
+    ```
+  </Step>
+  
+  <Step title="Test compilation">
+    ```bash
+    sbt ++3.3.1 compile
+    ```
+  </Step>
+  
+  <Step title="Fix Scala 3 incompatibilities">
+    Use version-specific source directories for code that differs.
+  </Step>
+  
+  <Step title="Test thoroughly">
+    ```bash
+    sbt +test
+    ```
+  </Step>
+</Steps>
+
+## Advanced Cross-Version Configuration
+
+### Per-Project Cross Versions
+
+```scala build.sbt
+lazy val core = project
+  .settings(
+    name := "core",
+    crossScalaVersions := Seq("2.12.18", "2.13.12", "3.3.1")
+  )
+
+lazy val extras = project
+  .dependsOn(core)
+  .settings(
+    name := "extras",
+    crossScalaVersions := Seq("2.13.12", "3.3.1") // Fewer versions
+  )
+```
+
+### Cross-Version Exclusions
+
+```scala build.sbt
+libraryDependencies ++= {
+  CrossVersion.partialVersion(scalaVersion.value) match {
+    case Some((2, _)) =>
+      Seq(
+        "org.scala-lang.modules" %% "scala-collection-compat" % "2.11.0"
+      )
+    case _ => Seq.empty
+  }
+}
+```
+
+## Testing Cross-Built Artifacts
+
+Verify all versions build correctly:
+
+```bash
+# Clean everything
+sbt +clean
+
+# Compile all versions
+sbt +compile
+
+# Test all versions
+sbt +test
+
+# Publish all versions locally
+sbt +publishLocal
+
+# Verify artifacts were created
+find ~/.ivy2/local -name "*my-library*"
+```
+
+## Continuous Integration
+
+Configure CI to test all Scala versions:
+
+```yaml .github/workflows/ci.yml
+name: CI
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        scala: [2.12.18, 2.13.12, 3.3.1]
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-java@v3
+        with:
+          java-version: '17'
+      - name: Test
+        run: sbt "++${{ matrix.scala }} test"
+```
+
+## Common Pitfalls
+
+<Warning>
+Common issues when cross-building:
+
+1. **Forgetting to update crossScalaVersions** - Always keep this list up to date
+2. **Using wrong dependency operators** - Use `%%` for Scala libraries, `%` for Java libraries
+3. **Not testing all versions** - Always run `+test` before publishing
+4. **Version-specific code without organization** - Use source directories properly
+5. **Incompatible compiler flags** - Some flags only work on specific Scala versions
+</Warning>
+
+## Best Practices
+
+<Steps>
+  <Step title="Support current versions">
+    At minimum, support the latest patch releases of Scala 2.13 and Scala 3.
+  </Step>
+  
+  <Step title="Use version-specific directories">
+    Organize version-specific code in `scala-2/` and `scala-3/` directories.
+  </Step>
+  
+  <Step title="Test all combinations">
+    Use `sbt +test` to test all Scala versions before releasing.
+  </Step>
+  
+  <Step title="Document compatibility">
+    Clearly document which Scala versions your library supports.
+  </Step>
+  
+  <Step title="Minimize version-specific code">
+    Keep shared code in the common `scala/` directory when possible.
+  </Step>
+  
+  <Step title="Use CrossVersion helpers">
+    Leverage `CrossVersion.partialVersion` for conditional configuration.
+  </Step>
+</Steps>
+
+## Reference
+
+### CrossVersion API
+
+```scala
+import sbt.CrossVersion
+
+// Get binary version
+CrossVersion.binaryScalaVersion("2.13.12") // "2.13"
+CrossVersion.binaryScalaVersion("3.3.1")   // "3"
+
+// Parse version
+CrossVersion.partialVersion("2.13.12") // Some((2, 13))
+CrossVersion.partialVersion("3.3.1")   // Some((3, 3))
+```

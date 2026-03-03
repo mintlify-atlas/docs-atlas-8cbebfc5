@@ -1,0 +1,580 @@
+---
+title: AutoPlugin System
+description: Deep dive into sbt's AutoPlugin architecture including triggers, requirements, and activation logic
+---
+
+The AutoPlugin system is sbt's mechanism for composable, modular build plugins. This guide explains how AutoPlugins work, how they're activated, and how to use the `trigger` and `requires` system.
+
+## What is an AutoPlugin?
+
+An AutoPlugin defines:
+1. **Requirements** - what other plugins must be present
+2. **Trigger** - when the plugin should auto-activate
+3. **Settings** - what configuration to add when activated
+
+From the source code:
+
+```scala
+abstract class AutoPlugin extends Plugins.Basic with PluginsFunctions {
+  /**
+   * Determines whether this AutoPlugin will be activated for this project 
+   * when the `requires` clause is satisfied.
+   */
+  def trigger: PluginTrigger = noTrigger
+
+  /**
+   * This AutoPlugin requires the plugins the Plugins matcher returned 
+   * by this method.
+   */
+  def requires: Plugins = Plugins.defaultRequires
+
+  /** The `Setting`s to add in the scope of each project */
+  def projectSettings: Seq[Setting[_]] = Nil
+
+  /** The `Setting` to add to the build scope */
+  def buildSettings: Seq[Setting[_]] = Nil
+
+  /** The `Setting`s to add to the global scope */
+  def globalSettings: Seq[Setting[_]] = Nil
+
+  /** The `Configuration`s to add to each project */
+  def projectConfigurations: Seq[Configuration] = Nil
+}
+```
+
+## Plugin Triggers
+
+The `trigger` method controls when a plugin automatically activates:
+
+### allRequirements
+
+Automatically enables the plugin when all required plugins are present:
+
+```scala
+object CorePlugin extends AutoPlugin {
+  // Included by default in ALL projects
+  override def trigger = allRequirements
+  override def requires = empty
+
+  override lazy val projectSettings = Defaults.coreDefaultSettings
+  override lazy val globalSettings = Defaults.globalSbtCore
+}
+```
+
+### noTrigger
+
+Plugin must be explicitly enabled by users:
+
+```scala
+object MyOptionalPlugin extends AutoPlugin {
+  // User must call enablePlugins(MyOptionalPlugin)
+  override def trigger = noTrigger
+  override def requires = JvmPlugin
+
+  override lazy val projectSettings = Seq(
+    // custom settings
+  )
+}
+```
+
+Users enable it explicitly:
+
+```scala
+// build.sbt
+lazy val myProject = project
+  .enablePlugins(MyOptionalPlugin)
+```
+
+## Plugin Requirements
+
+The `requires` method specifies plugin dependencies:
+
+### No Requirements (Root Plugin)
+
+```scala
+object CorePlugin extends AutoPlugin {
+  override def trigger = allRequirements
+  override def requires = empty  // No dependencies
+}
+```
+
+<Note>
+Plugins with `requires = empty` and `trigger = allRequirements` are called "root plugins" - they're always enabled and cannot be disabled.
+</Note>
+
+### Single Requirement
+
+```scala
+object IvyPlugin extends AutoPlugin {
+  override def requires = CorePlugin
+  override def trigger = allRequirements
+
+  override lazy val projectSettings =
+    Classpaths.ivyPublishSettings ++ Classpaths.ivyBaseSettings
+}
+```
+
+### Multiple Requirements (AND logic)
+
+```scala
+object MyPlugin extends AutoPlugin {
+  // Requires BOTH Web AND Javascript plugins
+  override def requires = Web && Javascript
+  override def trigger = allRequirements
+
+  override def projectSettings = Seq(
+    // settings for web + javascript projects
+  )
+}
+```
+
+### Exclusion Requirements
+
+```scala
+object MyPlugin extends AutoPlugin {
+  // Requires JvmPlugin but NOT ScalaPlugin
+  override def requires = JvmPlugin && !ScalaPlugin
+  override def trigger = allRequirements
+}
+```
+
+## Real-World Plugin Hierarchy
+
+Here's how sbt's core plugins build on each other:
+
+<Steps>
+  <Step title="CorePlugin - The foundation">
+    ```scala
+    object CorePlugin extends AutoPlugin {
+      override def trigger = allRequirements
+      override def requires = empty
+
+      override lazy val projectSettings = Defaults.coreDefaultSettings
+      override lazy val globalSettings = Defaults.globalSbtCore
+    }
+    ```
+
+    Always enabled, provides core sbt functionality.
+  </Step>
+
+  <Step title="IvyPlugin - Dependency management">
+    ```scala
+    object IvyPlugin extends AutoPlugin {
+      override def requires = CorePlugin
+      override def trigger = allRequirements
+
+      override lazy val globalSettings = Defaults.globalIvyCore
+      override lazy val projectSettings =
+        Classpaths.ivyPublishSettings ++ Classpaths.ivyBaseSettings
+    }
+    ```
+
+    Auto-enables when CorePlugin is present (which is always).
+  </Step>
+
+  <Step title="JvmPlugin - JVM project support">
+    ```scala
+    object JvmPlugin extends AutoPlugin {
+      override def requires = IvyPlugin
+      override def trigger = allRequirements
+
+      override lazy val globalSettings = Defaults.globalJvmCore
+      override lazy val buildSettings = Defaults.buildLevelJvmSettings
+      override lazy val projectSettings =
+        Defaults.runnerSettings ++
+          Defaults.paths ++
+          Classpaths.jvmPublishSettings ++
+          Classpaths.jvmBaseSettings ++
+          Defaults.baseTasks ++
+          Defaults.compileBase ++
+          Defaults.defaultConfigs
+
+      override def projectConfigurations = Configurations.default
+    }
+    ```
+
+    Provides JVM compilation, classpath management, and run/test tasks.
+  </Step>
+
+  <Step title="SemanticdbPlugin - Code analysis">
+    ```scala
+    object SemanticdbPlugin extends AutoPlugin {
+      override def requires = JvmPlugin
+      override def trigger = allRequirements
+
+      override lazy val globalSettings = Seq(
+        semanticdbEnabled := SysProp.semanticdb,
+        semanticdbIncludeInJar := false,
+        semanticdbOptions := List(),
+        semanticdbVersion := "4.14.2"
+      )
+
+      override lazy val projectSettings = Seq(
+        semanticdbCompilerPlugin := {
+          val v = semanticdbVersion.value
+          ("org.scalameta" % "semanticdb-scalac" % v).cross(CrossVersion.full)
+        },
+        // ...
+      ) ++
+        inConfig(Compile)(configurationSettings) ++
+        inConfig(Test)(configurationSettings)
+    }
+    ```
+
+    Auto-enables for all JVM projects, adds semanticdb compiler plugin.
+  </Step>
+</Steps>
+
+The dependency chain: `CorePlugin` → `IvyPlugin` → `JvmPlugin` → `SemanticdbPlugin`
+
+## Plugin Discovery and Loading
+
+How sbt discovers plugins:
+
+### Plugin Descriptor Files
+
+When you compile a plugin, sbt generates descriptor files:
+
+```scala
+// From PluginDiscovery.scala
+object Paths {
+  final val AutoPlugins = "sbt/sbt.autoplugins"
+  final val Builds = "sbt/sbt.builds"
+}
+```
+
+These files list available plugins:
+
+```
+# resources/sbt/sbt.autoplugins
+com.example.MyPlugin
+com.example.AnotherPlugin
+```
+
+### Discovery Process
+
+```scala
+def discoverAll(data: PluginData, loader: ClassLoader): DetectedPlugins = {
+  val defaultAutoPlugins = Seq(
+    "sbt.plugins.IvyPlugin" -> sbt.plugins.IvyPlugin,
+    "sbt.plugins.JvmPlugin" -> sbt.plugins.JvmPlugin,
+    "sbt.plugins.CorePlugin" -> sbt.plugins.CorePlugin,
+    "sbt.ScriptedPlugin" -> sbt.ScriptedPlugin,
+    "sbt.plugins.SbtPlugin" -> sbt.plugins.SbtPlugin,
+    "sbt.plugins.SemanticdbPlugin" -> sbt.plugins.SemanticdbPlugin,
+    "sbt.plugins.JUnitXmlReportPlugin" -> sbt.plugins.JUnitXmlReportPlugin,
+    "sbt.plugins.Giter8TemplatePlugin" -> sbt.plugins.Giter8TemplatePlugin,
+    "sbt.plugins.DependencyTreePlugin" -> sbt.plugins.DependencyTreePlugin,
+  )
+  val detectedAutoPlugins = discover[AutoPlugin](AutoPlugins)
+  val allAutoPlugins = (defaultAutoPlugins ++ detectedAutoPlugins.modules)
+  // ...
+}
+```
+
+## Plugin Activation Logic
+
+sbt uses a logic solver to determine which plugins to activate:
+
+### The Deduction Algorithm
+
+```scala
+def deducer(defined: List[AutoPlugin]): (Plugins, Logger) => Seq[AutoPlugin] = {
+  // 1. Build clauses from requirements
+  val allRequirementsClause = 
+    defined.filterNot(_.isRoot).flatMap(d => asRequirementsClauses(d))
+  val allEnabledByClause = 
+    defined.filterNot(_.isRoot).flatMap(d => asEnabledByClauses(d))
+
+  (requestedPlugins, log) => {
+    // 2. Find always-enabled plugins
+    val alwaysEnabled = defined.filter(_.isAlwaysEnabled)
+    
+    // 3. Build knowledge base
+    val knowledge = (flatten(requestedPlugins) ++ alwaysEnabled)
+      .collect { case x: AutoPlugin => Atom(x.label) }.toSet
+    
+    // 4. Solve logic constraints
+    Logic.reduce(clauses, knowledge) match {
+      case Left(problem) => throw AutoPluginException(problem)
+      case Right(results) => 
+        // 5. Topologically sort plugins
+        topologicalSort(selectedPlugins)
+    }
+  }
+}
+```
+
+### Topological Sorting
+
+Plugins are sorted so dependencies come before dependents:
+
+```scala
+private[sbt] def topologicalSort(ns: List[AutoPlugin]): List[AutoPlugin] = {
+  @tailrec
+  def doSort(
+    found: List[AutoPlugin],
+    notFound: List[AutoPlugin],
+    limit: Int
+  ): List[AutoPlugin] = {
+    if (limit < 0) throw AutoPluginException(s"Failed to sort $ns topologically")
+    else if (notFound.isEmpty) found
+    else {
+      val (found1, notFound1) = notFound partition { n =>
+        asRequirements(n).toSet subsetOf found.toSet
+      }
+      doSort(found ::: found1, notFound1, limit - 1)
+    }
+  }
+  val (roots, nonRoots) = ns partition (_.isRoot)
+  doSort(roots, nonRoots, ns.size * ns.size + 1)
+}
+```
+
+This ensures:
+- `CorePlugin` loads before `IvyPlugin`
+- `IvyPlugin` loads before `JvmPlugin`
+- `JvmPlugin` loads before `SemanticdbPlugin`
+
+## The autoImport Mechanism
+
+The `autoImport` object makes keys available in `.sbt` files:
+
+```scala
+object DependencyTreePlugin extends AutoPlugin {
+  // Keys in autoImport are automatically imported
+  object autoImport extends DependencyTreeKeys
+
+  import autoImport._
+  override def trigger = AllRequirements
+  
+  override def globalSettings = Seq(
+    dependencyTreeIncludeScalaLibrary :== false,
+    dependencyDotNodeColors :== true
+  )
+}
+```
+
+How it works:
+
+```scala
+private[sbt] def hasAutoImportGetter(
+  ap: AutoPlugin, 
+  loader: ClassLoader
+): Boolean = {
+  def existsAutoImportVal(clazz: Class[_]): Option[Field] = {
+    catching(classOf[NoSuchFieldException])
+      .opt(clazz.getDeclaredField("autoImport"))
+      .orElse(Option(clazz.getSuperclass).flatMap(existsAutoImportVal))
+  }
+
+  val pluginClazz = ap.getClass
+  existsAutoImportVal(pluginClazz)
+    .orElse(
+      catching(classOf[ClassNotFoundException])
+        .opt(Class.forName(s"${pluginClazz.getName}$autoImport$$", false, loader))
+    )
+    .isDefined
+}
+```
+
+## Advanced Plugin Patterns
+
+### Conditional Plugin Activation
+
+```scala
+object JUnitXmlReportPlugin extends AutoPlugin {
+  override def requires = JvmPlugin
+  override def trigger = allRequirements
+
+  object autoImport {
+    val testReportsDirectory = 
+      settingKey[File]("Directory for junit test reports")
+  }
+
+  import autoImport._
+
+  override lazy val projectSettings = 
+    inConfig(Test)(testReportSettings)
+}
+```
+
+Users can disable:
+
+```scala
+lazy val myProject = project
+  .disablePlugins(JUnitXmlReportPlugin)
+```
+
+### Scoped Settings per Configuration
+
+```scala
+object SemanticdbPlugin extends AutoPlugin {
+  override def requires = JvmPlugin
+  override def trigger = allRequirements
+
+  // Apply settings to both Compile and Test
+  override lazy val projectSettings =
+    baseSettings ++
+      inConfig(Compile)(configurationSettings) ++
+      inConfig(Test)(configurationSettings)
+
+  lazy val configurationSettings: Seq[Setting[_]] = List(
+    semanticdbTargetRoot := {
+      val in = semanticdbIncludeInJar.value
+      if (in) backendOutput.value.toFile()
+      else semanticdbTargetRoot.value
+    },
+    scalacOptions ++= semanticdbOptions.value
+  )
+}
+```
+
+### Dynamic Settings
+
+```scala
+object SbtPlugin extends AutoPlugin {
+  override def requires = ScriptedPlugin
+
+  override lazy val projectSettings = Seq(
+    sbtPlugin := true,
+    pluginCrossBuild / sbtVersion := {
+      // Dynamic setting based on Scala version
+      scalaBinaryVersion.value match {
+        case "3"    => sbtVersion.value
+        case "2.12" => "1.5.8"
+        case "2.10" => "0.13.18"
+      }
+    }
+  )
+}
+```
+
+## Error Handling
+
+### Contradiction Detection
+
+```scala
+// User tries to enable conflicting plugins
+lazy val project = project
+  .enablePlugins(PluginA)
+  .disablePlugins(PluginA)  // Contradiction!
+
+// sbt detects and reports:
+// "Contradiction in selected plugins. These plugins were both 
+//  included and excluded: PluginA"
+```
+
+### Cyclic Dependencies
+
+```scala
+object PluginA extends AutoPlugin {
+  override def requires = PluginB
+}
+
+object PluginB extends AutoPlugin {
+  override def requires = PluginA  // Cycle!
+}
+
+// sbt detects and reports:
+// "Cycles in plugin requirements cannot involve excludes."
+```
+
+### Missing Requirements
+
+```scala
+object MyPlugin extends AutoPlugin {
+  override def requires = SomePlugin  // SomePlugin not available
+}
+
+lazy val project = project
+  .enablePlugins(MyPlugin)
+
+// sbt reports what's missing and suggests solutions
+```
+
+## Debugging Plugin Activation
+
+Enable debug logging to see plugin activation:
+
+```scala
+// build.sbt
+logLevel := Level.Debug
+```
+
+Output shows:
+
+```
+[debug] deducing auto plugins based on known facts Set(Atom(CorePlugin), ...) 
+[debug]   :: deduced result: Seq(CorePlugin, IvyPlugin, JvmPlugin, ...)
+```
+
+## Best Practices
+
+<Steps>
+  <Step title="Use trigger = allRequirements for foundational plugins">
+    ```scala
+    // Plugin that should always be active when requirements met
+    object MyFoundationalPlugin extends AutoPlugin {
+      override def trigger = allRequirements
+      override def requires = JvmPlugin
+    }
+    ```
+  </Step>
+
+  <Step title="Use trigger = noTrigger for optional features">
+    ```scala
+    // Plugin users explicitly enable
+    object MyOptionalFeature extends AutoPlugin {
+      override def trigger = noTrigger
+      override def requires = JvmPlugin
+    }
+    ```
+  </Step>
+
+  <Step title="Set up clear dependency chains">
+    ```scala
+    // Good: clear linear dependency
+    CorePlugin → IvyPlugin → JvmPlugin → MyPlugin
+
+    // Avoid: complex requirement graphs
+    MyPlugin requires (A && B && !C && (D || E))
+    ```
+  </Step>
+
+  <Step title="Document plugin activation">
+    ```scala
+    /**
+     * Adds JUnit XML test reporting.
+     *
+     * Automatically enabled for all JVM projects.
+     * To disable:
+     * {{{myProject.disablePlugins(JUnitXmlReportPlugin)}}}
+     */
+    object JUnitXmlReportPlugin extends AutoPlugin {
+      override def requires = JvmPlugin
+      override def trigger = allRequirements
+    }
+    ```
+  </Step>
+</Steps>
+
+<Warning>
+Be careful with `trigger = allRequirements` - it means your plugin activates automatically for all projects that meet the requirements. Make sure this behavior is desired.
+</Warning>
+
+## Summary
+
+- **AutoPlugin** = Requirements + Trigger + Settings
+- **trigger = allRequirements** = auto-activate when requirements met
+- **trigger = noTrigger** = require explicit enablement
+- **requires = empty** = no dependencies (root plugin)
+- **requires = A && B** = needs both A and B
+- **requires = A && !B** = needs A but not B
+- sbt uses logic solving and topological sorting to determine activation
+- Plugins load in dependency order
+- `autoImport` makes keys available to `.sbt` files
+
+<Tip>
+Study sbt's core plugins (`CorePlugin`, `IvyPlugin`, `JvmPlugin`) to see the AutoPlugin system in action. They demonstrate clean dependency chains and proper use of triggers.
+</Tip>

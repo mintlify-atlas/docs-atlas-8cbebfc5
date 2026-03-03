@@ -1,0 +1,476 @@
+---
+title: "Build Server Protocol (BSP)"
+description: "How sbt implements the Build Server Protocol for IDE and tool integration"
+---
+
+The Build Server Protocol (BSP) is a standardized protocol that allows IDEs and development tools to communicate with build servers. sbt implements BSP to provide a consistent interface for tools like IntelliJ IDEA, VS Code (Metals), and other build clients.
+
+## What is BSP?
+
+BSP defines a JSON-RPC-based protocol for communication between:
+
+- **Build Client** - IDE or development tool
+- **Build Server** - sbt or other build tool
+
+This allows IDEs to:
+- Request compilation
+- Get build target information
+- Receive compilation diagnostics
+- Run tests
+- Resolve dependencies
+
+<Note>
+  BSP is language-agnostic and is also implemented by other build tools like Bazel, Mill, Gradle, and Maven. Learn more at [build-server-protocol.github.io](https://build-server-protocol.github.io/).
+</Note>
+
+## BSP in sbt Architecture
+
+sbt's BSP implementation is spread across two main areas:
+
+### 1. Protocol Module
+
+Location: `protocol/src/main/contraband-scala/sbt/internal/bsp/`
+
+Defines BSP data types using Contraband:
+
+| File | Purpose |
+|------|----------|
+| `BuildTarget.scala` | Build target representation |
+| `BuildTargetIdentifier.scala` | Unique target IDs |
+| `CompileParams.scala` | Compilation request parameters |
+| `CompileReport.scala` | Compilation results |
+| `BuildServerCapabilities.scala` | Server capability declarations |
+| `BuildClientCapabilities.scala` | Client capability declarations |
+| `BspConnectionDetails.scala` | Connection configuration |
+| `BspCompileResult.scala` | BSP-specific compile results |
+
+Example data types:
+
+```scala
+// BuildTargetIdentifier uniquely identifies a build target
+case class BuildTargetIdentifier(uri: URI)
+
+// BuildTarget describes a compilable unit
+case class BuildTarget(
+  id: BuildTargetIdentifier,
+  displayName: String,
+  baseDirectory: URI,
+  tags: Seq[String],
+  languageIds: Seq[String],
+  dependencies: Seq[BuildTargetIdentifier],
+  capabilities: BuildTargetCapabilities,
+  dataKind: Option[String],
+  data: Option[JValue]
+)
+```
+
+### 2. Server Implementation
+
+Location: `main/src/main/scala/sbt/internal/server/BuildServerProtocol.scala:1`
+
+Implements the BSP server within sbt:
+
+```scala
+object BuildServerProtocol {
+  private val capabilities = BuildServerCapabilities(
+    CompileProvider(BuildServerConnection.languages),
+    TestProvider(BuildServerConnection.languages),
+    RunProvider(BuildServerConnection.languages),
+    DebugProvider(Vector.empty),
+    dependencySourcesProvider = true,
+    resourcesProvider = true,
+    outputPathsProvider = true,
+    canReload = true,
+    jvmRunEnvironmentProvider = true,
+    jvmTestEnvironmentProvider = true,
+  )
+}
+```
+
+## Server Capabilities
+
+sbt's BSP server advertises these capabilities:
+
+<AccordionGroup>
+  <Accordion title="Compile Provider" icon="code">
+    Supports compiling build targets.
+    
+    **Languages**: Scala, Java
+    
+    Handles `buildTarget/compile` requests to trigger incremental compilation via Zinc.
+  </Accordion>
+
+  <Accordion title="Test Provider" icon="flask">
+    Supports running tests.
+    
+    **Languages**: Scala, Java
+    
+    Handles `buildTarget/test` requests to execute test frameworks.
+  </Accordion>
+
+  <Accordion title="Run Provider" icon="play">
+    Supports running main classes.
+    
+    **Languages**: Scala, Java
+    
+    Handles `buildTarget/run` requests to execute applications.
+  </Accordion>
+
+  <Accordion title="Dependency Sources" icon="download">
+    Provides source JARs for dependencies.
+    
+    Handles `buildTarget/dependencySources` to enable IDE navigation to library code.
+  </Accordion>
+
+  <Accordion title="Resources" icon="folder">
+    Provides resource directories.
+    
+    Handles `buildTarget/resources` to inform IDEs about resource files.
+  </Accordion>
+
+  <Accordion title="Output Paths" icon="file-export">
+    Provides compilation output directories.
+    
+    Handles `buildTarget/outputPaths` (added in sbt 1.8.0) to tell IDEs where compiled classes are located.
+  </Accordion>
+
+  <Accordion title="JVM Environments" icon="coffee">
+    Provides JVM runtime configuration.
+    
+    Handles `buildTarget/jvmRunEnvironment` and `buildTarget/jvmTestEnvironment` for proper JVM setup.
+  </Accordion>
+
+  <Accordion title="Reload" icon="arrows-rotate">
+    Supports reloading the build.
+    
+    Handles build file changes and project reloading without restarting the server.
+  </Accordion>
+</AccordionGroup>
+
+## BSP Keys in sbt
+
+sbt provides several keys for BSP configuration:
+
+Key file: `main/src/main/scala/sbt/Keys.scala:1`
+
+```scala
+// Create or update BSP connection files
+val bspConfig = taskKey[Unit](
+  "Create or update the BSP connection files"
+)
+
+// Enable/disable BSP for this build
+val bspEnabled = settingKey[Boolean](
+  "Enable/Disable BSP for this build, project or configuration"
+)
+
+// Should BSP export meta-targets for the SBT build itself?
+val bspSbtEnabled = settingKey[Boolean](
+  "Should BSP export meta-targets for the SBT build itself?"
+)
+
+// Mapping of BSP build targets to sbt scopes
+val bspWorkspace = settingKey[Map[BuildTargetIdentifier, Scope]](
+  "Mapping of BSP build targets to sbt scopes"
+)
+
+// List all BSP build targets
+val bspWorkspaceBuildTargets = taskKey[Seq[BuildTarget]](
+  "List all the BSP build targets"
+)
+
+// Description of the BSP build target
+val bspBuildTarget = taskKey[BuildTarget](
+  "Description of the BSP build targets"
+)
+```
+
+## Setting Up BSP
+
+<Steps>
+  <Step title="Enable BSP">
+    BSP is enabled by default. To explicitly enable or disable:
+    
+    ```scala
+    // In build.sbt
+    Global / bspEnabled := true
+    ```
+  </Step>
+
+  <Step title="Generate Connection File">
+    Run the `bspConfig` task to create the BSP connection file:
+    
+    ```bash
+    sbt bspConfig
+    ```
+    
+    This creates `.bsp/sbt.json` in your project directory.
+  </Step>
+
+  <Step title="Connect from IDE">
+    Your IDE (IntelliJ, VS Code with Metals) will detect the `.bsp/sbt.json` file and connect automatically.
+    
+    The connection file contains:
+    - Server name and version
+    - Command to start the BSP server
+    - Supported languages
+  </Step>
+</Steps>
+
+## BSP Connection Details
+
+The `.bsp/sbt.json` file contains:
+
+```json
+{
+  "name": "sbt",
+  "version": "2.0.0-RC9",
+  "bspVersion": "2.1.0",
+  "languages": ["scala", "java"],
+  "argv": [
+    "sbt",
+    "bspReload"
+  ]
+}
+```
+
+<Note>
+  The `argv` field contains the command to start the BSP server. The IDE launches this command and communicates via stdin/stdout.
+</Note>
+
+## BSP Request Handlers
+
+Implementation location: `main/src/main/scala/sbt/internal/server/BuildServerProtocol.scala:47`
+
+Key BSP endpoints implemented in sbt:
+
+### build/initialize
+
+Initializes the BSP connection and exchanges capabilities.
+
+```scala
+// Returns BuildServerCapabilities
+private val capabilities = BuildServerCapabilities(
+  CompileProvider(BuildServerConnection.languages),
+  TestProvider(BuildServerConnection.languages),
+  // ... other capabilities
+)
+```
+
+### workspace/buildTargets
+
+Returns all build targets in the workspace.
+
+```scala
+// Maps sbt projects to BSP build targets
+val bspWorkspaceBuildTargets = taskKey[Seq[BuildTarget]](
+  "List all the BSP build targets"
+)
+```
+
+### buildTarget/compile
+
+Compiles specified build targets.
+
+```scala
+// Triggers incremental compilation and returns results
+// Returns BspCompileResult with diagnostics
+```
+
+### buildTarget/test
+
+Runs tests for specified build targets.
+
+### buildTarget/dependencySources
+
+Provides source JARs for dependencies.
+
+### bspReload
+
+Custom sbt command for BSP reload:
+
+Key file: `main/src/main/scala/sbt/internal/server/BuildServerProtocol.scala:71`
+
+```scala
+val bspReload = "bspReload"
+
+lazy val commands: Seq[Command] = Seq(
+  Command.single(bspReload) { (state, reqId) =>
+    try {
+      val newState = BuiltinCommands.doLoadProject(
+        state, 
+        Project.LoadAction.Current
+      )
+      exchange.respondEvent(JNull, Some(reqId), state.source)
+      newState
+    } catch {
+      case NonFatal(e) =>
+        val msg = ErrorHandling.reducedToString(e)
+        exchange.respondError(
+          ErrorCodes.InternalError, 
+          msg, 
+          Some(reqId), 
+          state.source
+        )
+        state.fail
+    }
+  }
+)
+```
+
+## Build Target Mapping
+
+sbt maps projects to BSP build targets:
+
+- Each sbt project becomes a BSP build target
+- Each configuration (Compile, Test) can be a separate target
+- Target IDs are URI-based for uniqueness
+
+Example mapping:
+
+```
+sbt project: myproject
+  → BSP target: myproject-compile (Compile configuration)
+  → BSP target: myproject-test (Test configuration)
+```
+
+## Configuration Scope
+
+BSP can be configured at different scopes:
+
+```scala
+// Global scope - affects entire build
+Global / bspEnabled := true
+
+// Project scope - affects single project
+ThisProject / bspEnabled := true
+
+// Configuration scope - affects Test or Compile
+Test / bspEnabled := false
+```
+
+## Meta-targets for SBT Build
+
+The `bspSbtEnabled` setting controls whether BSP exports targets for the sbt build itself (meta-build):
+
+```scala
+Global / bspSbtEnabled := true
+```
+
+This allows IDEs to:
+- Navigate sbt build definition code
+- Get autocompletion in `build.sbt`
+- Compile `project/` directory
+
+## Error Handling
+
+BSP implementation includes robust error handling:
+
+Key file: `main/src/main/scala/sbt/internal/server/BuildServerProtocol.scala:92`
+
+```scala
+if (bspEnabled.value) {
+  BuildServerConnection.writeConnectionFile(
+    sbtVersion.value,
+    (ThisBuild / baseDirectory).value
+  )
+} else {
+  val logger = streams.value.log
+  logger.warn("BSP is disabled for this build")
+  logger.info("add 'Global / bspEnabled := true' to enable BSP")
+}
+```
+
+<Warning>
+  If BSP is disabled and an IDE tries to connect, sbt will log a warning. Enable BSP with `Global / bspEnabled := true` in your build definition.
+</Warning>
+
+## Debugging BSP
+
+To debug BSP communication:
+
+<Steps>
+  <Step title="Enable verbose logging">
+    ```bash
+    sbt -DBSP_DEBUG=true
+    ```
+  </Step>
+  
+  <Step title="Check connection file">
+    Verify `.bsp/sbt.json` exists and contains correct information.
+  </Step>
+  
+  <Step title="Monitor BSP traffic">
+    Use your IDE's BSP debugging tools to view JSON-RPC messages.
+  </Step>
+  
+  <Step title="Check sbt logs">
+    BSP errors are logged to sbt's standard output.
+  </Step>
+</Steps>
+
+## Limitations and Known Issues
+
+<AccordionGroup>
+  <Accordion title="Multiple sbt instances" icon="clone">
+    Only one sbt instance should handle BSP per project directory. Running multiple instances may cause conflicts.
+  </Accordion>
+
+  <Accordion title="Build file changes" icon="file-pen">
+    Some build file changes require BSP reload. IDEs should trigger `bspReload` when detecting build changes.
+  </Accordion>
+
+  <Accordion title="Debug provider" icon="bug">
+    Debug support is currently limited (DebugProvider returns empty capabilities).
+  </Accordion>
+</AccordionGroup>
+
+## BSP Protocol Version
+
+sbt implements BSP version 2.1.0, which includes:
+
+- Output paths support (since sbt 1.8.0)
+- JVM environment providers
+- Enhanced compilation reporting
+
+See [BSP Specification](https://build-server-protocol.github.io/docs/specification) for protocol details.
+
+## Integration Examples
+
+### VS Code with Metals
+
+Metals uses BSP to communicate with sbt:
+
+1. Metals detects `.bsp/sbt.json`
+2. Launches sbt BSP server
+3. Requests build targets
+4. Triggers compilation on file changes
+5. Displays diagnostics in editor
+
+### IntelliJ IDEA
+
+IntelliJ can use BSP instead of its native sbt integration:
+
+1. Import project as BSP
+2. IntelliJ uses BSP for all build operations
+3. Benefits from standardized protocol
+
+## Further Reading
+
+<CardGroup cols={2}>
+  <Card title="BSP Specification" icon="book" href="https://build-server-protocol.github.io/">
+    Official Build Server Protocol documentation
+  </Card>
+  
+  <Card title="Architecture" icon="sitemap" href="/advanced/architecture">
+    How BSP fits into sbt's architecture
+  </Card>
+  
+  <Card title="Protocol Module" icon="messages" href="https://github.com/sbt/sbt/tree/develop/protocol">
+    Source code for protocol definitions
+  </Card>
+  
+  <Card title="Server Implementation" icon="server" href="https://github.com/sbt/sbt/blob/develop/main/src/main/scala/sbt/internal/server/BuildServerProtocol.scala">
+    BSP server implementation in sbt
+  </Card>
+</CardGroup>
