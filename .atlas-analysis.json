@@ -1,0 +1,139 @@
+{
+  "projectType": "framework",
+  "projectName": "sbt",
+  "projectDescription": "An interactive build tool for Scala, Java, and more",
+  "theme": "aspen",
+  "primaryColor": "#DC322F",
+  "lightColor": "#E35D5B",
+  "darkColor": "#B02A27",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Getting Started",
+            "pages": [
+              "introduction",
+              "installation",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/build-definition",
+              "concepts/tasks-and-settings",
+              "concepts/scopes",
+              "concepts/dependencies",
+              "concepts/multi-project-builds"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/configuring-scala",
+              "guides/library-dependencies",
+              "guides/testing",
+              "guides/publishing",
+              "guides/cross-building",
+              "guides/incremental-compilation"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Reference",
+        "groups": [
+          {
+            "group": "Configuration",
+            "pages": [
+              "reference/settings-and-tasks",
+              "reference/configurations",
+              "reference/directory-structure",
+              "reference/command-line"
+            ]
+          },
+          {
+            "group": "Core Plugins",
+            "pages": [
+              "reference/plugins/core-plugin",
+              "reference/plugins/jvm-plugin",
+              "reference/plugins/ivy-plugin",
+              "reference/plugins/sbt-plugin"
+            ]
+          },
+          {
+            "group": "API Reference",
+            "pages": [
+              "api/keys",
+              "api/defaults",
+              "api/project",
+              "api/build"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Advanced",
+        "groups": [
+          {
+            "group": "Plugin Development",
+            "pages": [
+              "advanced/plugins/creating-plugins",
+              "advanced/plugins/plugin-best-practices",
+              "advanced/plugins/auto-plugins"
+            ]
+          },
+          {
+            "group": "Extending sbt",
+            "pages": [
+              "advanced/task-graph",
+              "advanced/custom-settings",
+              "advanced/build-state",
+              "advanced/commands"
+            ]
+          },
+          {
+            "group": "Internals",
+            "pages": [
+              "advanced/architecture",
+              "advanced/zinc-incremental-compiler",
+              "advanced/build-server-protocol",
+              "advanced/contributing"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Incremental compilation with Zinc",
+    "Interactive shell with task execution",
+    "Flexible plugin system",
+    "Multi-project build support",
+    "Dependency management with Ivy and Coursier",
+    "Parallel task execution",
+    "Build Server Protocol (BSP) support",
+    "Cross-building for multiple Scala versions",
+    "Scripted testing framework",
+    "Remote caching"
+  ],
+  "publicApiSurface": [
+    "Keys.scala - Build task and setting keys",
+    "Defaults.scala - Default implementations",
+    "Project - Project definition API",
+    "Build - Build definition",
+    "Setting - Setting definitions",
+    "Task - Task definitions",
+    "Plugin - Plugin trait",
+    "AutoPlugin - Auto plugin system",
+    "Command - Command definition",
+    "State - Build state management",
+    "Scope - Scope axis system",
+    "Configuration - Configuration axis",
+    "Resolver - Dependency resolvers",
+    "ModuleID - Module dependencies",
+    "Compile / Test / Runtime - Standard configurations"
+  ]
+}
